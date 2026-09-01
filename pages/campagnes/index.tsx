@@ -154,7 +154,7 @@ function Campagnes() {
         const j = await r.json();
         setRafraichit(false);
         if (!r.ok) { setMsg(j.erreur); return; }
-        setMsg(`${j.evenements || "aucun événement"} · ${j.clics || ""}`.trim());
+        setMsg(j.resume);
         charger();
       }}>{rafraichit ? "…" : "Rafraîchir les compteurs"}</button>
       {msg && <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{msg}</span>}

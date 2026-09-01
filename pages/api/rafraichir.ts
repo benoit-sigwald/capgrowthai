@@ -22,9 +22,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "POST") { res.setHeader("Allow", ["POST"]); return res.status(405).end(); }
 
   const r = await appelMailer("/sync", {}) as Record<string, { sortie?: string }>;
-  // On relaie la sortie du routeur telle quelle : inventer un resume ici
-  // reviendrait a recompter ce qu'il vient de compter.
-  const lire = (bloc?: { sortie?: string }) => (bloc?.sortie || "").trim();
-  res.json({ ok: true,
-             clics: lire(r.clics), evenements: lire(r.evenements), reponses: lire(r.reponses) });
+
+  /*
+   * Le routeur rend la sortie de ses scripts, telle qu'ils l'impriment :
+   * « sync : {'lus': 1, 'appliques': 1, ...} ». C'est lisible pour qui debogue,
+   * illisible sur un ecran — et c'est exactement ce qui s'affichait a
+   * l'utilisateur. On en extrait les nombres, on jette la forme.
+   */
+  const nombre = (bloc: { sortie?: string } | undefined, ...cles: string[]) => {
+    const texte = bloc?.sortie || "";
+    for (const cle of cles) {
+      // Double echappement voulu : dans un gabarit, « \s » perdrait sa barre
+      // et la recherche ne trouverait plus rien.
+      const m = new RegExp(`'${cle}':\\s*(\\d+)`).exec(texte);
+      if (m) return Number(m[1]);
+    }
+    return 0;
+  };
+
+  const evenements = nombre(r.evenements, "appliques", "nouveaux_evenements");
+  const clics = nombre(r.clics, "envois_mis_a_jour", "nouveaux_clics");
+  const reponses = nombre(r.reponses, "reponses", "nouveaux");
+
+  const parts = [
+    evenements ? `${evenements} événement(s)` : "",
+    clics ? `${clics} clic(s)` : "",
+    reponses ? `${reponses} réponse(s)` : "",
+  ].filter(Boolean);
+
+  res.json({ ok: true, evenements, clics, reponses,
+             resume: parts.length ? `${parts.join(", ")} repris.`
+                                  : "Rien de nouveau depuis la dernière relève." });
 }
