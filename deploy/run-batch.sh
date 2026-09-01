@@ -12,6 +12,10 @@ ORA_WALLET_PASSWORD=$(sudo cat /root/.ora_wallet_password)
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --network coolify --restart unless-stopped \
   -v /home/ubuntu/ora-wallet:/wallet:ro \
+  `# Fichiers des registres publics : le conteneur y exporte nos noms, l'hote y` \
+  `# depose les lignes retenues des fichiers complets. Un volume, parce qu'un` \
+  `# redeploiement ne doit pas effacer le filtrage de 3,4 millions de lignes.` \
+  -v /home/ubuntu/registres:/registres \
   -e ORA_USER=prospects \
   -e ORA_PASSWORD="$ORA_PASSWORD" \
   -e ORA_CONNECT=arxdb01_low \
