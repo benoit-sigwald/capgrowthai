@@ -1,13 +1,103 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Coquille from "@/components/Coquille";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
 
 const taux = (n: number, d: number) => d ? `${n} (${Math.round(100 * n / d)} %)` : "—";
+type Ligne = Record<string, string | number | null>;
+
+/*
+ * Panneau d'une campagne existante : renommer, completer, annuler ce qui n'est
+ * pas parti, supprimer.
+ *
+ * Il s'ouvre sous la ligne plutot que dans une page separee : ce qu'on decide
+ * ici depend des chiffres de la ligne — combien sont partis, combien attendent.
+ */
+function Panneau({ c, surFermer, surChange }: {
+  c: Ligne; surFermer: () => void; surChange: () => void;
+}) {
+  const { mandat } = useMandat();
+  const id = String(c.CAMPAIGN_ID);
+  const [nom, setNom] = useState(String(c.NAME ?? ""));
+  const [segments, setSegments] = useState<{ ID: number; NOM: string }[]>([]);
+  const [segmentId, setSegmentId] = useState(0);
+  const [limite, setLimite] = useState(200);
+  const [msg, setMsg] = useState("");
+  const envoyes = Number(c.ENVOYES) || 0;
+  const attente = Number(c.EN_ATTENTE) || 0;
+
+  useEffect(() => {
+    if (!mandat) return;
+    fetch(`/capgrowth/api/segments?client=${mandat.ID}`).then(r => r.json())
+      .then(d => setSegments(d.rows || []));
+  }, [mandat]);
+
+  async function agir(methode: string, corps: unknown, encours: string) {
+    setMsg(encours);
+    const r = await fetch(`/capgrowth/api/campagnes/${encodeURIComponent(id)}`,
+      { method: methode, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corps) });
+    const j = await r.json();
+    if (!r.ok) { setMsg(j.erreur); return null; }
+    surChange(); return j;
+  }
+
+  return (
+    <tr><td colSpan={11} style={{ background: "var(--bg-alt)", padding: "14px 16px" }}>
+      <div style={{ display: "grid", gap: 12, maxWidth: 760 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={nom} onChange={e => setNom(e.target.value)} style={{ width: 260 }} />
+          <button className="btn" disabled={!nom.trim() || nom === c.NAME}
+            onClick={async () => { if (await agir("PATCH", { nom }, "Renommage…")) setMsg("Renommée."); }}>
+            Renommer</button>
+          <button className="btn" style={{ marginLeft: "auto" }} onClick={surFermer}>Fermer</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--ink-3)", minWidth: 108 }}>Ajouter des cibles</span>
+          <select value={segmentId} onChange={e => setSegmentId(Number(e.target.value))}>
+            <option value={0}>Segment…</option>
+            {segments.map(s => <option key={s.ID} value={s.ID}>{s.NOM}</option>)}
+          </select>
+          <input type="number" value={limite} style={{ width: 90 }}
+            onChange={e => setLimite(Number(e.target.value))} />
+          <button className="btn bleu" disabled={!segmentId} onClick={async () => {
+            const j = await agir("POST", { segment_id: segmentId, limite }, "Préparation…");
+            if (j) setMsg(`${j.prepares} envoi(s) ajouté(s)`
+              + (j.ignores?.deja_cible ? ` — ${j.ignores.deja_cible} déjà ciblé(s) par cette campagne` : "")
+              + (j.hors_investisseurs ? `, ${j.hors_investisseurs} hors base investisseurs écarté(s)` : "") + ".");
+          }}>Ajouter</button>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--ink-3)", margin: 0 }}>
+          L&apos;ajout garde l&apos;expéditeur de la campagne ({String(c.EXPEDITEUR_EMAIL || "—")}) :
+          une même campagne ne part pas sous deux adresses. Les contacts déjà ciblés sont ignorés.
+        </p>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {attente > 0 && (
+            <button className="btn" onClick={async () => {
+              if (!confirm(`Annuler les ${attente} envoi(s) en attente ? Les ${envoyes} déjà partis ne bougent pas.`)) return;
+              const j = await agir("DELETE", { annuler_en_attente: true }, "Annulation…");
+              if (j) setMsg(`${j.annules} envoi(s) annulé(s).`);
+            }}>Annuler les {attente} en attente</button>)}
+          <button className="btn" style={{ color: "var(--crit)" }} onClick={async () => {
+            if (!confirm(`Supprimer la campagne « ${c.NAME} » ?`)) return;
+            const j = await agir("DELETE", {}, "Suppression…");
+            if (j) { setMsg("Campagne supprimée."); surFermer(); }
+          }}>Supprimer la campagne</button>
+          {envoyes > 0 && <span className="pill warn" style={{ alignSelf: "center" }}>
+            {envoyes} e-mail(s) partis : la campagne ne peut plus être supprimée, seulement vidée de son attente.
+          </span>}
+        </div>
+        {msg && <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{msg}</span>}
+      </div>
+    </td></tr>);
+}
 
 function Campagnes() {
   const { mandat } = useMandat();
-  const [rows, setRows] = useState<Record<string, never>[]>([]);
+  const [rows, setRows] = useState<Ligne[]>([]);
+  const [ouverte, setOuverte] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
   const charger = useCallback(() => {
@@ -38,27 +128,38 @@ function Campagnes() {
       border: "1px solid var(--hair-soft)", boxShadow: "var(--shadow)" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
         <thead><tr>{["Campagne", "Expéditeur", "Ciblées", "Envoyés", "En attente",
-          "Ouverts", "Cliqués", "Réponses", "Rebonds", ""].map(h =>
-          <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontSize: 10,
+          "Ouverts", "Cliqués", "Réponses", "Rebonds", "", ""].map((h, i) =>
+          <th key={i} style={{ textAlign: "left", padding: "9px 12px", fontSize: 10,
             color: "var(--ink-3)", borderBottom: "1px solid var(--hair-soft)" }}>{h}</th>)}
         </tr></thead>
-        <tbody>{rows.map(c => (
-          <tr key={c["CAMPAIGN_ID"]} style={{ borderBottom: "1px solid var(--hair-soft)" }}>
-            <td style={{ padding: "8px 12px", fontWeight: 600 }}>{c["NAME"]}</td>
-            <td style={{ padding: "8px 12px", color: "var(--ink-2)" }}>{c["EXPEDITEUR_EMAIL"] || "—"}</td>
-            <td style={{ padding: "8px 12px" }}>{c["TOTAL_TARGETED"]}</td>
-            <td style={{ padding: "8px 12px" }}>{c["ENVOYES"]}</td>
-            <td style={{ padding: "8px 12px" }}>{c["EN_ATTENTE"]}</td>
-            <td style={{ padding: "8px 12px" }}>{taux(c["OUVERTS"], c["ENVOYES"])}</td>
-            <td style={{ padding: "8px 12px" }}>{taux(c["CLIQUES"], c["ENVOYES"])}</td>
-            <td style={{ padding: "8px 12px" }}>{taux(c["REPONDUS"], c["ENVOYES"])}</td>
-            <td style={{ padding: "8px 12px" }}>{c["REBONDS"] ? <span className="pill crit">{c["REBONDS"]}</span> : "—"}</td>
-            <td style={{ padding: "8px 12px" }}>
-              {Number(c["EN_ATTENTE"]) > 0 &&
-                <button className="btn" onClick={() => envoyer(String(c["CAMPAIGN_ID"]))}>Envoyer un lot</button>}
-            </td>
-          </tr>))}
-          {!rows.length && <tr><td colSpan={10} style={{ padding: 24, textAlign: "center",
+        <tbody>{rows.map(c => {
+          const id = String(c.CAMPAIGN_ID);
+          return (
+            <Fragment key={id}>
+              <tr style={{ borderBottom: "1px solid var(--hair-soft)" }}>
+                <td style={{ padding: "8px 12px", fontWeight: 600 }}>{c.NAME}</td>
+                <td style={{ padding: "8px 12px", color: "var(--ink-2)" }}>{c.EXPEDITEUR_EMAIL || "—"}</td>
+                <td style={{ padding: "8px 12px" }}>{c.TOTAL_TARGETED}</td>
+                <td style={{ padding: "8px 12px" }}>{c.ENVOYES}</td>
+                <td style={{ padding: "8px 12px" }}>{c.EN_ATTENTE}</td>
+                <td style={{ padding: "8px 12px" }}>{taux(Number(c.OUVERTS), Number(c.ENVOYES))}</td>
+                <td style={{ padding: "8px 12px" }}>{taux(Number(c.CLIQUES), Number(c.ENVOYES))}</td>
+                <td style={{ padding: "8px 12px" }}>{taux(Number(c.REPONDUS), Number(c.ENVOYES))}</td>
+                <td style={{ padding: "8px 12px" }}>{c.REBONDS ? <span className="pill crit">{c.REBONDS}</span> : "—"}</td>
+                <td style={{ padding: "8px 12px" }}>
+                  {Number(c.EN_ATTENTE) > 0 &&
+                    <button className="btn" onClick={() => envoyer(id)}>Envoyer un lot</button>}
+                </td>
+                <td style={{ padding: "8px 12px" }}>
+                  <button className="btn" onClick={() => setOuverte(ouverte === id ? null : id)}>
+                    {ouverte === id ? "Fermer" : "Modifier"}</button>
+                </td>
+              </tr>
+              {ouverte === id && <Panneau c={c}
+                surFermer={() => setOuverte(null)} surChange={charger} />}
+            </Fragment>);
+        })}
+          {!rows.length && <tr><td colSpan={11} style={{ padding: 24, textAlign: "center",
             color: "var(--ink-3)" }}>Aucune campagne sur ce mandat.</td></tr>}
         </tbody>
       </table>
@@ -72,7 +173,8 @@ export default function PageCampagnes() {
       <Coquille section="campagnes">
         <h1 style={{ fontSize: 22, marginBottom: 14 }}>Campagnes</h1>
         <p style={{ color: "var(--ink-3)" }}>Les taux se lisent sur les envois, jamais sur les cibles.
-          Le plafond du jour vient du chauffage du domaine expéditeur.</p>
+          Le plafond du jour vient du chauffage du domaine expéditeur. Ce qui est parti ne se
+          modifie plus ; ce qui est en attente s&apos;ajoute et se retire.</p>
         <Campagnes />
       </Coquille>
     </MandatFournisseur>

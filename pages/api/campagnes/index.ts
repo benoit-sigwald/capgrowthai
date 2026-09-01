@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
-import { construireFiltre } from "@/lib/personnes";
+import { ciblesDuSegment } from "@/lib/cibles";
 import { preparer } from "@/lib/mailer";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -56,46 +56,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ erreur: "ce mandat impose d'envoyer sous sa propre adresse" });
 
     // Le segment appartient au mandat ; son filtre est rejoue maintenant.
-    const seg = (await q(`SELECT CLIENT_ID, FILTRE FROM LISTE WHERE ID = :id`, { id: segment_id }))
-      .rows as { CLIENT_ID: number; FILTRE: string }[];
-    if (!seg.length || seg[0].CLIENT_ID !== cid)
-      return res.status(404).json({ erreur: "segment inconnu sur ce mandat" });
-    const { where, binds } = construireFiltre(JSON.parse(seg[0].FILTRE));
-
-    // Seuls les contacts investisseurs partent en campagne v1 : ce sont eux
-    // qui portent langue et demarchage, et le mailer les reconnait par
-    // CONTACT_ID. Les autres sources sont comptees et dites, pas oubliees.
-    // Le filtre du segment s'applique dans une sous-requete AVANT la jointure :
-    // V_PERSONNES et INVESTORS.CONTACTS portent tous deux EMAIL, et un WHERE
-    // non qualifie leverait ORA-00918.
-    const cibles = await q(`
-      SELECT SUBSTR(v.PERSON_KEY, 5) CONTACT_ID, v.EMAIL,
-             TRIM(NVL(v.FIRST_NAME, ' ') || ' ' || NVL(v.LAST_NAME, ' ')) FULL_NAME,
-             v.COUNTRY,
-             REPLACE(REPLACE(REPLACE(NVL(JSON_SERIALIZE(i.LANGUAGES), '[]'),
-                     '[', ''), ']', ''), '"', '') LANGUES
-        FROM (SELECT * FROM V_PERSONNES WHERE ${where}) v
-        JOIN INVESTORS.CONTACTS i ON 'inv:' || i.CONTACT_ID = v.PERSON_KEY
-       WHERE v.PERSON_KEY LIKE 'inv:%' AND v.EMAIL IS NOT NULL
-       FETCH FIRST ${Math.min(Number(limite) || 500, 2000)} ROWS ONLY`, binds);
-    const horsInv = await q(`SELECT COUNT(*) N FROM (SELECT * FROM V_PERSONNES WHERE ${where}) v
-       WHERE v.PERSON_KEY NOT LIKE 'inv:%' AND v.EMAIL IS NOT NULL`, binds);
-
-    const lignes = cibles.rows as { CONTACT_ID: string; EMAIL: string; FULL_NAME: string;
-      COUNTRY: string | null; LANGUES: string }[];
-    if (!lignes.length) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
-
-    const csv = ["contact_id;email;full_name;country;languages"]
-      .concat(lignes.map(l => [l.CONTACT_ID, l.EMAIL, l.FULL_NAME, l.COUNTRY ?? "", l.LANGUES]
-        .map(x => String(x ?? "").replace(/;/g, ",")).join(";")))
-      .join("\n");
+    const cibles = await ciblesDuSegment(Number(segment_id), cid, limite);
+    if (!cibles) return res.status(404).json({ erreur: "segment inconnu sur ce mandat" });
+    if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
     const prep = await preparer({
-      name: nom.trim(), csv,
+      name: nom.trim(), csv: cibles.csv,
       client_id: cid, sender_email: e.EMAIL, sender_name: e.NOM_AFFICHAGE,
     });
     return res.json({ ok: true, ...prep,
-      hors_investisseurs: (horsInv.rows as { N: number }[])[0].N });
+      hors_investisseurs: cibles.horsInvestisseurs });
   }
 
   res.setHeader("Allow", ["GET", "POST"]); res.status(405).end();
