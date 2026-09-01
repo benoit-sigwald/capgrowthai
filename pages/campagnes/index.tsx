@@ -121,6 +121,7 @@ function Campagnes() {
   const [rows, setRows] = useState<Ligne[]>([]);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
+  const [rafraichit, setRafraichit] = useState(false);
 
   const charger = useCallback(() => {
     if (!mandat) return;
@@ -144,6 +145,18 @@ function Campagnes() {
     <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "center" }}>
       <Link href="/campagnes/nouvelle" className="btn bleu"
         style={{ display: "inline-block" }}>Nouvelle campagne</Link>
+      {/* Les ouvertures et les clics vivent chez le routeur : un passage horaire
+          les ingere. Une heure est courte pour une vraie campagne, longue quand
+          on vient d'ouvrir soi-meme le message de test. */}
+      <button className="btn" disabled={rafraichit} onClick={async () => {
+        setRafraichit(true); setMsg("Relève des ouvertures et des clics…");
+        const r = await fetch(`/capgrowth/api/rafraichir`, { method: "POST" });
+        const j = await r.json();
+        setRafraichit(false);
+        if (!r.ok) { setMsg(j.erreur); return; }
+        setMsg(`${j.evenements || "aucun événement"} · ${j.clics || ""}`.trim());
+        charger();
+      }}>{rafraichit ? "…" : "Rafraîchir les compteurs"}</button>
       {msg && <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{msg}</span>}
     </div>
     <div style={{ overflowX: "auto", background: "var(--card)", borderRadius: "var(--r)",
