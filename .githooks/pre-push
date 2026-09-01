@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Les trois recettes, avant chaque push. Aucune exception silencieuse.
+#
+# Pose le 2026-09-01 apres deux pannes de suite sur la meme regle de ciblage :
+# la correction avait ete verifiee sur le cas signale, jamais sur la regle. Ce
+# n'est pas a l'utilisateur de decouvrir la troisieme forme du meme bug.
+#
+#   1. tests unitaires   — les regles, hors reseau
+#   2. recette de surface — les 401/403 et la portee, sur l'application deployee
+#   3. recette de ciblage — les trois formes qu'une personne peut prendre
+#
+# Les deux dernieres interrogent la PRODUCTION : elles ne preparent ni
+# n'envoient rien, et nettoient ce qu'elles creent.
+#
+# Les mots de passe vivent dans .recette.env, ignore par git. Absents, le push
+# est REFUSE : une recette sautee en silence donne une confiance qu'on n'a pas.
+# Pour passer outre en connaissance de cause : git push --no-verify
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 1
+
+echo "→ recettes avant push"
+
+if [ -f .recette.env ]; then
+  set -a; . ./.recette.env; set +a
+fi
+
+echec=0
+lancer() {
+  local titre="$1"; shift
+  printf '  %-28s' "$titre"
+  if sortie=$("$@" 2>&1); then
+    echo "ok   $(echo "$sortie" | grep -oE '[0-9]+ (controle|pass)[^,]*' | tail -1)"
+  else
+    echo "ECHEC"
+    echo "$sortie" | tail -12 | sed 's/^/      /'
+    echec=1
+  fi
+}
+
+lancer "unitaires" npm test --silent
+
+if [ -z "${CG_TEST_PASSWORD:-}" ] || [ -z "${CG_ADMIN_MDP:-}" ]; then
+  echo "  identifiants de recette absents (.recette.env) : push refuse."
+  echo "  CG_TEST_PASSWORD et CG_ADMIN_MDP sont requis ; sinon git push --no-verify."
+  exit 1
+fi
+
+lancer "surface" npm run test:surface --silent
+lancer "ciblage" npm run test:ciblage --silent
+
+if [ "$echec" -ne 0 ]; then
+  echo "→ push refuse : une recette a echoue."
+  exit 1
+fi
+echo "→ les trois recettes passent."
