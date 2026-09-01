@@ -23,6 +23,7 @@ docker run -d --name "$NAME" --network coolify --restart unless-stopped \
   -e ORA_WALLET_PASSWORD="$ORA_WALLET_PASSWORD" \
   -e NEXTAUTH_SECRET="$SECRET" \
   -e NEXTAUTH_URL=https://arx-consulting.com/capgrowth \
+  -e HOSTNAME=0.0.0.0 \
   -l traefik.enable=true \
   -l 'traefik.http.routers.capgrowth-http.rule=Host(`arx-consulting.com`) && PathPrefix(`/capgrowth`)' \
   -l traefik.http.routers.capgrowth-http.entrypoints=http \
