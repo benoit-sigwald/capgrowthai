@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "test": "node --test tests/*.test.ts",
-    "test:surface": "node scripts/tester-surface.js"
+    "test:surface": "node scripts/tester-surface.js",
+    "test:ciblage": "node scripts/tester-ciblage.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
