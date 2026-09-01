@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
-import { ciblesDuSegment } from "@/lib/cibles";
+import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
 import { preparer, renommerCampagne, supprimerCampagne } from "@/lib/mailer";
 
 /*
@@ -51,14 +51,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     // Completer : meme expediteur, meme mandat, memes gabarits. Le mailer
     // ecarte de lui-meme les adresses deja ciblees par cette campagne.
-    const { segment_id, limite } = (req.body ?? {}) as
-      { segment_id?: number; limite?: number };
-    if (!segment_id) return res.status(400).json({ erreur: "segment_id requis" });
+    const { segment_id, liste_id, limite } = (req.body ?? {}) as
+      { segment_id?: number; liste_id?: number; limite?: number };
+    if (!segment_id && !liste_id)
+      return res.status(400).json({ erreur: "un segment ou une liste requis" });
     if (!camp.EXPEDITEUR_EMAIL)
       return res.status(409).json({ erreur: "campagne sans expediteur : elle ne peut pas etre completee" });
 
-    const cibles = await ciblesDuSegment(Number(segment_id), cid, limite);
-    if (!cibles) return res.status(404).json({ erreur: "segment inconnu sur ce mandat" });
+    const cibles = segment_id
+      ? await ciblesDuSegment(Number(segment_id), cid, limite)
+      : await ciblesDeLaListe(Number(liste_id), cid, limite);
+    if (!cibles) return res.status(404).json({
+      erreur: `${segment_id ? "segment" : "liste"} inconnu sur ce mandat` });
     if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
     const prep = await preparer({ campaign_id: id, name: camp.NAME, csv: cibles.csv,

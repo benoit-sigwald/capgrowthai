@@ -20,7 +20,8 @@ function Panneau({ c, surFermer, surChange }: {
   const id = String(c.CAMPAIGN_ID);
   const [nom, setNom] = useState(String(c.NAME ?? ""));
   const [segments, setSegments] = useState<{ ID: number; NOM: string }[]>([]);
-  const [segmentId, setSegmentId] = useState(0);
+  const [listes, setListes] = useState<{ ID: number; NOM: string; MEMBRES: number }[]>([]);
+  const [cible, setCible] = useState("");   // « s:12 » ou « l:3 »
   const [limite, setLimite] = useState(200);
   const [msg, setMsg] = useState("");
   const envoyes = Number(c.ENVOYES) || 0;
@@ -30,6 +31,8 @@ function Panneau({ c, surFermer, surChange }: {
     if (!mandat) return;
     fetch(`/capgrowth/api/segments?client=${mandat.ID}`).then(r => r.json())
       .then(d => setSegments(d.rows || []));
+    fetch(`/capgrowth/api/listes?client=${mandat.ID}`).then(r => r.json())
+      .then(d => setListes(d.rows || []));
   }, [mandat]);
 
   async function agir(methode: string, corps: unknown, encours: string) {
@@ -55,14 +58,23 @@ function Panneau({ c, surFermer, surChange }: {
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: "var(--ink-3)", minWidth: 108 }}>Ajouter des cibles</span>
-          <select value={segmentId} onChange={e => setSegmentId(Number(e.target.value))}>
-            <option value={0}>Segment…</option>
-            {segments.map(s => <option key={s.ID} value={s.ID}>{s.NOM}</option>)}
+          <select value={cible} onChange={e => setCible(e.target.value)}>
+            <option value="">Segment ou liste…</option>
+            {segments.length > 0 && <optgroup label="Segments — critère rejoué">
+              {segments.map(s => <option key={`s${s.ID}`} value={`s:${s.ID}`}>{s.NOM}</option>)}
+            </optgroup>}
+            {listes.length > 0 && <optgroup label="Listes — ensemble figé">
+              {listes.map(l => <option key={`l${l.ID}`} value={`l:${l.ID}`}>
+                {l.NOM} — {l.MEMBRES} contact(s)</option>)}
+            </optgroup>}
           </select>
           <input type="number" value={limite} style={{ width: 90 }}
             onChange={e => setLimite(Number(e.target.value))} />
-          <button className="btn bleu" disabled={!segmentId} onClick={async () => {
-            const j = await agir("POST", { segment_id: segmentId, limite }, "Préparation…");
+          <button className="btn bleu" disabled={!cible} onClick={async () => {
+            const [type, id] = cible.split(":");
+            const j = await agir("POST", { limite,
+              ...(type === "s" ? { segment_id: Number(id) } : { liste_id: Number(id) }) },
+              "Préparation…");
             if (j) setMsg(`${j.prepares} envoi(s) ajouté(s)`
               + (j.ignores?.deja_cible ? ` — ${j.ignores.deja_cible} déjà ciblé(s) par cette campagne` : "")
               + (j.hors_investisseurs ? `, ${j.hors_investisseurs} hors base investisseurs écarté(s)` : "") + ".");

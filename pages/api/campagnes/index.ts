@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
-import { ciblesDuSegment } from "@/lib/cibles";
+import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
 import { preparer } from "@/lib/mailer";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -33,10 +33,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     // Le ciblage est le referentiel : reserve aux roles Arx.
     if (!contactsAutorises(p)) return res.status(403).json({ erreur: "creation reservee a Arx" });
-    const { nom, segment_id, expediteur_id, limite } = (req.body ?? {}) as
-      { nom?: string; segment_id?: number; expediteur_id?: number; limite?: number };
-    if (!nom?.trim() || !segment_id || !expediteur_id)
-      return res.status(400).json({ erreur: "nom, segment_id et expediteur_id requis" });
+    const { nom, segment_id, liste_id, expediteur_id, limite } = (req.body ?? {}) as
+      { nom?: string; segment_id?: number; liste_id?: number;
+        expediteur_id?: number; limite?: number };
+    if (!nom?.trim() || !expediteur_id || (!segment_id && !liste_id))
+      return res.status(400).json({ erreur: "nom, expediteur_id et un segment OU une liste requis" });
+    if (segment_id && liste_id)
+      return res.status(400).json({ erreur: "un segment ou une liste, pas les deux" });
 
     // L'expediteur doit appartenir au mandat, etre verifie, et — en mode
     // « utilisateur » — etre le sien. Un domaine non authentifie ne part pas :
@@ -55,9 +58,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (e.MODE_EXPEDITEUR === "utilisateur" && p.role !== "admin" && e.UTILISATEUR_ID !== p.uid)
       return res.status(403).json({ erreur: "ce mandat impose d'envoyer sous sa propre adresse" });
 
-    // Le segment appartient au mandat ; son filtre est rejoue maintenant.
-    const cibles = await ciblesDuSegment(Number(segment_id), cid, limite);
-    if (!cibles) return res.status(404).json({ erreur: "segment inconnu sur ce mandat" });
+    // La source appartient au mandat. Un segment rejoue son filtre maintenant ;
+    // une liste rend ce qu'on y a mis, et rien d'autre.
+    const cibles = segment_id
+      ? await ciblesDuSegment(Number(segment_id), cid, limite)
+      : await ciblesDeLaListe(Number(liste_id), cid, limite);
+    if (!cibles) return res.status(404).json({
+      erreur: `${segment_id ? "segment" : "liste"} inconnu sur ce mandat` });
     if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
     const prep = await preparer({
