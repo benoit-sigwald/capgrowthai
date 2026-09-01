@@ -32,3 +32,15 @@ export const creerSenderBrevo = (email: string, name: string) =>
 export const preparer = (corps: Record<string, unknown>) => appelMailer("/prepare", corps);
 export const envoyerLot = (campaign_id: string, batch: number) =>
   appelMailer("/send", { campaign_id, batch });
+
+/*
+ * Le CRM lit les tables INVESTORS, il n'y ecrit pas : elles appartiennent au
+ * mailer, seul a s'y connecter en ecriture. Renommer ou supprimer une campagne
+ * passe donc par lui — l'alternative aurait ete d'ouvrir un droit d'ecriture
+ * sur un second schema, pour une commodite.
+ */
+export const renommerCampagne = (campaign_id: string, name: string) =>
+  appelMailer(`/campaigns/${encodeURIComponent(campaign_id)}`, { name }, "PATCH");
+export const supprimerCampagne = (campaign_id: string, enAttenteSeulement: boolean) =>
+  appelMailer(`/campaigns/${encodeURIComponent(campaign_id)}`,
+              { en_attente_seulement: enAttenteSeulement }, "DELETE");

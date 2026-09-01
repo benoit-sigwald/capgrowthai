@@ -3,7 +3,7 @@ import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
 import { ciblesDuSegment } from "@/lib/cibles";
-import { preparer } from "@/lib/mailer";
+import { preparer, renommerCampagne, supprimerCampagne } from "@/lib/mailer";
 
 /*
  * Une campagne existante : lire, renommer, completer, annuler ce qui n'est pas
@@ -44,8 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "PATCH") {
     const { nom } = (req.body ?? {}) as { nom?: string };
     if (!nom?.trim()) return res.status(400).json({ erreur: "nom requis" });
-    await q(`UPDATE INVESTORS.MAILING_CAMPAIGNS SET NAME = :n WHERE CAMPAIGN_ID = :id`,
-            { n: nom.trim().slice(0, 200), id });
+    await renommerCampagne(id, nom.trim());
     return res.json({ ok: true });
   }
 
@@ -71,18 +70,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const n = await compte();
     const { annuler_en_attente } = (req.body ?? {}) as { annuler_en_attente?: boolean };
 
-    if (annuler_en_attente) {
-      const r = await q(`DELETE FROM INVESTORS.MAILING_SENDS
-                          WHERE CAMPAIGN_ID = :id AND STATUS = 'pending' AND SENT_AT IS NULL`,
-                        { id });
-      // TOTAL_TARGETED doit suivre, sinon les taux se lisent sur une cible qui
-      // n'existe plus et paraissent moins bons qu'ils ne sont.
-      await q(`UPDATE INVESTORS.MAILING_CAMPAIGNS
-                  SET TOTAL_TARGETED = (SELECT COUNT(*) FROM INVESTORS.MAILING_SENDS
-                                         WHERE CAMPAIGN_ID = :id)
-                WHERE CAMPAIGN_ID = :id`, { id });
-      return res.json({ ok: true, annules: r.rowsAffected ?? 0 });
-    }
+    // Le mailer recalcule TOTAL_TARGETED : sinon les taux se liraient sur une
+    // cible qui n'existe plus et paraitraient moins bons qu'ils ne sont.
+    if (annuler_en_attente) return res.json(await supprimerCampagne(id, true));
 
     /*
      * Une campagne dont un seul e-mail est parti ne se supprime pas : ses
@@ -95,9 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               + `Vous pouvez annuler les ${n.EN_ATTENTE} envoi(s) en attente.`,
         envoyes: n.ENVOYES, en_attente: n.EN_ATTENTE });
 
-    await q(`DELETE FROM INVESTORS.MAILING_SENDS WHERE CAMPAIGN_ID = :id`, { id });
-    await q(`DELETE FROM INVESTORS.MAILING_CAMPAIGNS WHERE CAMPAIGN_ID = :id`, { id });
-    return res.json({ ok: true, supprimes: n.EN_ATTENTE });
+    return res.json({ ...(await supprimerCampagne(id, false)), supprimes: n.EN_ATTENTE });
   }
 
   res.setHeader("Allow", ["GET", "PATCH", "POST", "DELETE"]); res.status(405).end();
