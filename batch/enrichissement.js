@@ -16,9 +16,13 @@
  */
 const { q, qLot, fermer } = require('./oracle');
 const enr = require('./enrichir');
+const org = require('./enrichir-organisations');
 
 const APPLIQUER = process.argv.includes('--appliquer');
 const LIMITE = (process.argv.find(a => a.startsWith('--limite=')) || '').split('=')[1] || null;
+// Les registres publics sont lents — une requete par societe, plafonnee par
+// l'agence. Ce passage ne part que si on le demande.
+const ORGANISATIONS = process.argv.includes('--organisations');
 
 async function main() {
   const existe = (await q(`SELECT COUNT(*) N FROM USER_TABLES
@@ -49,6 +53,20 @@ async function main() {
   console.log('  forme de l\'adresse :');
   for (const [k, n] of Object.entries(s.formes).sort((a, b) => b[1] - a[1])) {
     console.log(`    ${k.padEnd(18)} ${String(n).padStart(5)}`);
+  }
+
+  if (ORGANISATIONS) {
+    const t1 = Date.now();
+    const o = await org.enrichirOrganisations(q, { appliquer: APPLIQUER, limite: LIMITE, qLot });
+    const so = o.resume;
+    console.log(`\nOrganisations : ${so.organisations} interrogees, ` +
+                `${Math.round((Date.now() - t1) / 1000)} s`);
+    console.log(`  GLEIF   : ${so.gleif} rapprochees (dont ${so.gleif_certain} pays concordant)`);
+    console.log(`  EDGAR   : ${so.edgar} deposants, ${so.edgar_formulaires} avec formulaires`);
+    console.log(`  valeurs : ${so.valeurs}`);
+    for (const [k, n] of Object.entries(so.pays).sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+      console.log(`    pays ${String(k).padEnd(6)} ${String(n).padStart(4)}`);
+    }
   }
 
   if (!APPLIQUER) {

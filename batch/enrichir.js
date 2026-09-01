@@ -201,6 +201,33 @@ async function enrichirAdresses(q, { appliquer = false, limite = null, qLot = nu
 }
 
 /*
+ * Ecriture commune a tous les enrichisseurs.
+ *
+ * Un MERGE, jamais un INSERT : une source ne dit qu'une chose a la fois sur un
+ * champ. Relancer un passage met la date a jour, il ne cree pas une seconde
+ * verite a cote de la premiere.
+ */
+async function ecrireEnrichissements(qLot, typeCible, lignes) {
+  if (!lignes.length) return 0;
+  const SQL = `MERGE INTO ENRICHISSEMENT e
+               USING (SELECT :c CIBLE, :ch CHAMP, :s SOURCE FROM DUAL) s
+                 ON (e.CIBLE = s.CIBLE AND e.CHAMP = s.CHAMP AND e.SOURCE = s.SOURCE)
+               WHEN MATCHED THEN UPDATE SET VALEUR = :v, CONFIANCE = :cf,
+                      DETAIL = :d, VU_LE = SYSTIMESTAMP
+               WHEN NOT MATCHED THEN INSERT
+                      (CIBLE, TYPE_CIBLE, CHAMP, VALEUR, CONFIANCE, SOURCE, DETAIL)
+                 VALUES (:c, '${typeCible}', :ch, :v, :cf, :s, :d)`;
+  const donnees = lignes.map(l => ({
+    c: l.cible, ch: l.champ, v: l.valeur == null ? null : String(l.valeur).slice(0, 1000),
+    cf: l.confiance, s: l.source, d: l.detail ? String(l.detail).slice(0, 500) : null,
+  }));
+  for (let i = 0; i < donnees.length; i += 500) {
+    await qLot(SQL, donnees.slice(i, i + 500), BINDS_ENRICHISSEMENT);
+  }
+  return donnees.length;
+}
+
+/*
  * Ce que l'enrichissement a rendu, relu depuis la base.
  *
  * Toujours avec la date : un verdict MX de six mois ne vaut pas celui d'hier,
@@ -215,5 +242,6 @@ const SQL_ETAT_ENRICHISSEMENT = `
 
 module.exports = {
   DDL_ENRICHISSEMENT, INDEX_ENRICHISSEMENT, CONFIANCES,
-  classerAdresse, verifierDomaines, enrichirAdresses, SQL_ETAT_ENRICHISSEMENT,
+  classerAdresse, verifierDomaines, enrichirAdresses, ecrireEnrichissements,
+  SQL_ETAT_ENRICHISSEMENT,
 };

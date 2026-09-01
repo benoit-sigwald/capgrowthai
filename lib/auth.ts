@@ -6,6 +6,9 @@ import bcrypt from "bcryptjs";
 import { q } from "./oracle";
 import type { Portee, Role } from "./portee";
 
+// Le prefixe sous lequel l'application est servie (voir next.config.ts).
+const PREFIXE = "/capgrowth";
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: { signIn: "/connexion" },
@@ -33,6 +36,23 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    /*
+     * next-auth calcule son « baseUrl » sur l'ORIGINE de NEXTAUTH_URL et perd
+     * le prefixe de l'application. Consequence mesuree le 2026-09-01 : apres
+     * une connexion reussie, le navigateur atterrissait sur
+     * https://arx-consulting.com — la racine du domaine, qui n'est pas cette
+     * application — et l'utilisateur voyait un 404 alors que sa session etait
+     * bel et bien ouverte. On ramene toujours dans le perimetre de l'app.
+     */
+    redirect({ url, baseUrl }) {
+      const racine = `${baseUrl}${PREFIXE}`;
+      if (url.startsWith(racine)) return url;
+      if (url.startsWith("/")) {
+        return url.startsWith(`${PREFIXE}/`) || url === PREFIXE
+          ? `${baseUrl}${url}` : `${racine}${url}`;
+      }
+      return racine;
+    },
     jwt({ token, user }) {
       if (user) { const u = user as never as
           { role: Role; clientIds: number[]; droits: Record<number, "membre" | "client"> };
