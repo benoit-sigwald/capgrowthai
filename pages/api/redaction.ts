@@ -18,7 +18,12 @@ import { contactsAutorises } from "@/lib/portee";
  * Le modele est Mistral, deja utilise dans le parc — on n'ouvre pas un second
  * fournisseur pour une fonction de confort.
  */
-const MODELE = process.env.MISTRAL_MODELE || "mistral-large-latest";
+/*
+ * « mistral-large » est refuse par l'abonnement (403 tier_not_allowed, mesure
+ * du 2026-09-01) ; « small » repond et suffit largement pour retoucher un
+ * paragraphe. La variable permet d'en changer sans redeployer le code.
+ */
+const MODELE = process.env.MISTRAL_MODELE || "mistral-small-latest";
 const PLAFOND = 60000;   // caracteres de gabarit acceptes
 
 const CONSIGNE_SYSTEME = `Tu retouches le corps HTML d'un e-mail professionnel.
