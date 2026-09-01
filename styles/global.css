@@ -1,0 +1,39 @@
+/* Systeme visuel d'apple.com, repris de l'outil precedent : pile SF,
+   #F5F5F7, #0071E3, pilules 980px. Les deux outils se lisent pareil. */
+:root{
+  --bg:#FFFFFF; --bg-alt:#F5F5F7; --card:#FFFFFF;
+  --ink:#1D1D1F; --ink-2:#6E6E73; --ink-3:#86868B;
+  --hair:#D2D2D7; --hair-soft:#E8E8ED;
+  --blue:#0071E3; --ok:#248A3D; --warn:#B25000; --crit:#D70015;
+  --r:18px; --pill:980px; --shadow:0 4px 24px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000; --bg-alt:#101012; --card:#1D1D1F;
+    --ink:#F5F5F7; --ink-2:#A1A1A6; --ink-3:#86868B;
+    --hair:#38383D; --hair-soft:#2A2A2E; --blue:#2997FF;
+    --ok:#30D158; --warn:#FF9F0A; --crit:#FF453A;
+    --shadow:0 4px 24px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased}
+body{margin:0; background:var(--bg); color:var(--ink); font-size:12px; line-height:1.45;
+  letter-spacing:-.012em;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0; font-weight:600; letter-spacing:-.022em}
+a{color:var(--blue); text-decoration:none}
+button{font:inherit}
+input,select,textarea{font:inherit; color:var(--ink); background:var(--card);
+  border:1px solid var(--hair); border-radius:11px; padding:8px 12px}
+input:focus,select:focus{outline:none; border-color:var(--blue);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--blue) 20%,transparent)}
+.pill{display:inline-block; font-size:10px; padding:2px 9px; border-radius:var(--pill);
+  background:var(--bg-alt); color:var(--ink-2)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 14%,transparent); color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 14%,transparent); color:var(--warn)}
+.pill.crit{background:color-mix(in srgb,var(--crit) 14%,transparent); color:var(--crit)}
+.btn{cursor:pointer; border:1px solid var(--hair); background:var(--card); color:var(--ink);
+  border-radius:var(--pill); padding:8px 16px; font-size:11px}
+.btn.bleu{background:var(--blue); border-color:var(--blue); color:#fff}
+.btn:disabled{opacity:.4; cursor:default}
