@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Coquille from "@/components/Coquille";
+import EditeurVisuel from "@/components/EditeurVisuel";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
 
 type Modele = Record<string, string | number | null>;
@@ -27,8 +28,12 @@ function Modeles() {
   const { mandat } = useMandat();
   const [rows, setRows] = useState<Modele[]>([]);
   const [ed, setEd] = useState<Modele | null>(null);
-  const [onglet, setOnglet] = useState<"html" | "texte" | "apercu">("html");
+  const [onglet, setOnglet] = useState<"edition" | "html" | "texte">("edition");
   const [msg, setMsg] = useState("");
+  const [consigne, setConsigne] = useState("");
+  const [ia, setIa] = useState(false);
+  // Le contenu d'avant la retouche, pour revenir en un clic.
+  const [avantIa, setAvantIa] = useState<string | null>(null);
 
   const charger = useCallback(() => {
     if (!mandat) return;
@@ -37,8 +42,13 @@ function Modeles() {
   }, [mandat]);
   useEffect(charger, [charger]);
 
-  // L'apercu se recalcule a chaque frappe : c'est tout l'interet d'un apercu.
-  const apercu = useMemo(() => fusionner(String(ed?.CORPS_HTML ?? "")), [ed]);
+  /*
+   * L'objet est montre fusionne, a titre indicatif. Le CORPS, lui, s'edite tel
+   * qu'il est stocke, variables apparentes : les fusionner dans la zone
+   * d'edition reviendrait a enregistrer « Benoit SIGWALD » a la place de
+   * {{full_name}} des le premier enregistrement, et tous les destinataires
+   * suivants s'appelleraient Benoit.
+   */
   const sujet = useMemo(() => fusionner(String(ed?.SUBJECT ?? "")), [ed]);
 
   async function enregistrer() {
@@ -58,13 +68,34 @@ function Modeles() {
   }
 
   const onglets: [typeof onglet, string][] = [
-    ["html", "HTML — ce qui est envoyé"], ["texte", "Texte de repli"], ["apercu", "Aperçu"]];
+    ["edition", "Message — tel qu'il sera reçu"],
+    ["texte", "Texte de repli"],
+    ["html", "Code HTML"]];
 
   return (<>
     <button className="btn bleu" style={{ marginBottom: 14 }}
-      onClick={() => { setOnglet("html"); setMsg(""); setEd({ TEMPLATE_ID: "", NAME: "",
+      onClick={() => { setOnglet("edition"); setMsg(""); setEd({ TEMPLATE_ID: "", NAME: "",
         LANGUAGE: "fr", SUBJECT: "", CORPS: "", CORPS_HTML: "", IS_ACTIVE: 1,
         CLIENT_ID: mandat?.ID ?? null }); }}>Nouveau gabarit</button>
+
+    {/* Partir d'un gabarit existant : la plupart des nouveaux gabarits sont une
+        variante d'un ancien, et repartir d'une page blanche fait perdre la mise
+        en page, qui est ce qui a demande le plus de travail. */}
+    {rows.length > 0 && (
+      <select defaultValue="" style={{ marginLeft: 8, marginBottom: 14 }}
+        onChange={e => {
+          const src = rows.find(m => String(m.TEMPLATE_ID) === e.target.value);
+          e.target.value = "";
+          if (!src) return;
+          setOnglet("edition"); setMsg("Copie d'un gabarit existant : donnez-lui un identifiant.");
+          setEd({ ...src, TEMPLATE_ID: "", VERSION: null,
+                  NAME: `${src.NAME || src.TEMPLATE_ID} (copie)`,
+                  CLIENT_ID: mandat?.ID ?? null });
+        }}>
+        <option value="">…ou partir d&apos;un gabarit existant</option>
+        {rows.map(m => <option key={String(m.TEMPLATE_ID)} value={String(m.TEMPLATE_ID)}>
+          {m.NAME || m.TEMPLATE_ID} ({m.LANGUAGE})</option>)}
+      </select>)}
 
     {rows.map(m => (
       <div key={String(m.TEMPLATE_ID)} style={{ padding: "10px 0",
@@ -79,7 +110,7 @@ function Modeles() {
           {!String(m.CORPS_HTML ?? "") && <span className="pill crit">sans HTML</span>}
           <div style={{ color: "var(--ink-2)", fontSize: 11 }}>{m.SUBJECT}</div>
         </div>
-        <button className="btn" onClick={() => { setOnglet("html"); setMsg(""); setEd({ ...m }); }}>
+        <button className="btn" onClick={() => { setOnglet("edition"); setMsg(""); setEd({ ...m }); }}>
           Ouvrir</button>
       </div>))}
     {!rows.length && <p style={{ color: "var(--ink-3)" }}>Aucun gabarit.</p>}
@@ -113,6 +144,47 @@ function Modeles() {
                 onClick={() => setOnglet(id)}>{libelle}</button>))}
           </div>
 
+          {onglet === "edition" && (<>
+            <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
+              <b>Objet :</b> {sujet || <i>(vide)</i>}</div>
+            <EditeurVisuel cle={String(ed.TEMPLATE_ID) + ":" + String(ed.VERSION ?? "")}
+              html={String(ed.CORPS_HTML ?? "")}
+              surChange={h => setEd(e => (e ? { ...e, CORPS_HTML: h } : e))} />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
+              background: "var(--bg-alt)", borderRadius: 10, padding: "8px 10px" }}>
+              <input style={{ flex: 1, minWidth: 220 }} value={consigne}
+                placeholder="Demander à l'IA : « raccourcis le premier paragraphe », « ton plus sobre »…"
+                onChange={e => setConsigne(e.target.value)} />
+              <button className="btn" disabled={ia || !consigne.trim()} onClick={async () => {
+                setIa(true); setMsg("L'IA retouche le message…");
+                const avant = String(ed.CORPS_HTML ?? "");
+                const r = await fetch(`/capgrowth/api/redaction`, { method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ html: avant, consigne }) });
+                const j = await r.json();
+                setIa(false);
+                if (!r.ok) { setMsg(j.erreur); return; }
+                setAvantIa(avant);
+                setEd(e => (e ? { ...e, CORPS_HTML: j.html } : e));
+                setMsg(j.avertissement
+                  ? `Proposition affichée. ${j.avertissement}`
+                  : "Proposition affichée — relisez, puis Enregistrer pour qu'elle parte.");
+              }}>{ia ? "…" : "Demander à l'IA"}</button>
+              {avantIa !== null && (
+                <button className="btn" onClick={() => {
+                  setEd(e => (e ? { ...e, CORPS_HTML: avantIa } : e));
+                  setAvantIa(null); setMsg("Retouche annulée.");
+                }}>Revenir avant l&apos;IA</button>)}
+            </div>
+            <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+              L&apos;IA propose, elle n&apos;enregistre rien : rien ne part tant que vous
+              n&apos;avez pas cliqué sur Enregistrer.{" "}
+              Vous écrivez dans le message lui-même. Les <code>{"{{variables}}"}</code> restent
+              visibles ici et sont remplacées à l&apos;envoi, contact par contact — objet compris
+              (ci-dessus, avec {EXEMPLE.full_name} en exemple).
+            </span>
+          </>)}
+
           {onglet === "html" && (
             <textarea rows={20} spellCheck={false}
               style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
@@ -128,19 +200,6 @@ function Modeles() {
               Version texte, lue par les clients qui refusent le HTML. Elle doit dire la même
               chose que le HTML : c&apos;est en les laissant diverger qu&apos;un rendement de
               8 % s&apos;est retrouvé face à un rendement de 10 %.</span>
-          </>)}
-
-          {onglet === "apercu" && (<>
-            <div style={{ fontSize: 11, color: "var(--ink-2)" }}>
-              <b>Objet :</b> {sujet || <i>(vide)</i>}</div>
-            {/* Bac a sable : le gabarit est du HTML arbitraire, il ne doit ni
-                executer de script ni naviguer dans l'application. */}
-            <iframe title="Aperçu" sandbox="" srcDoc={apercu}
-              style={{ width: "100%", height: "62vh", border: "1px solid var(--hair)",
-                borderRadius: 10, background: "#fff" }} />
-            <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
-              Variables remplacées par un contact d&apos;exemple ({EXEMPLE.full_name}), comme le
-              fait le moteur d&apos;envoi. Le lien de suivi est factice ici.</span>
           </>)}
 
           <div style={{ fontSize: 10, color: "var(--ink-3)" }}>

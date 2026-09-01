@@ -13,6 +13,9 @@ if ! sudo test -s /root/.capgrowth_secret; then
 fi
 SECRET=$(sudo cat /root/.capgrowth_secret)
 MAILER_SECRET=$(sudo cat /root/.mailer_secret)
+# Retouche des gabarits par un modele de langue. Absente, le bouton le dit et
+# l'ecran reste utilisable : ce n'est pas une dependance de l'envoi.
+MISTRAL_API_KEY=$(sudo cat /root/.mistral_api_key 2>/dev/null || true)
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --network coolify --restart unless-stopped \
@@ -25,6 +28,7 @@ docker run -d --name "$NAME" --network coolify --restart unless-stopped \
   -e NEXTAUTH_SECRET="$SECRET" \
   -e NEXTAUTH_URL=https://arx-consulting.com/capgrowth \
   -e HOSTNAME=0.0.0.0   -e MAILER_BASE=http://arx-mailer:8080   -e MAILER_SECRET="$MAILER_SECRET" \
+  -e MISTRAL_API_KEY="$MISTRAL_API_KEY" \
   -l traefik.enable=true \
   -l 'traefik.http.routers.capgrowth-http.rule=Host(`arx-consulting.com`) && PathPrefix(`/capgrowth`)' \
   -l traefik.http.routers.capgrowth-http.entrypoints=http \
