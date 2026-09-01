@@ -3,7 +3,7 @@ import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
 import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
-import { preparer } from "@/lib/mailer";
+import { preparer, RefusMailer } from "@/lib/mailer";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const p = await porteeDepuis(req, res);
@@ -67,13 +67,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       erreur: `${segment_id ? "segment" : "liste"} inconnu sur ce mandat` });
     if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
-    const prep = await preparer({
+    let prep;
+    try {
+      prep = await preparer({
       name: nom.trim(), csv: cibles.csv,
       client_id: cid, sender_email: e.EMAIL, sender_name: e.NOM_AFFICHAGE,
       // Gabarits imposes : sans cela, deux gabarits actifs de meme langue se
       // departagent tout seuls et l'expediteur ignore lequel part.
-      template_ids: Array.isArray(template_ids) ? template_ids : undefined,
-    });
+        template_ids: Array.isArray(template_ids) ? template_ids : undefined,
+      });
+    } catch (e) {
+      // Un refus du routeur (gabarit absent, quota) est une reponse metier.
+      if (e instanceof RefusMailer) return res.status(422).json({ erreur: e.message });
+      throw e;
+    }
     return res.json({ ok: true, ...prep,
       hors_investisseurs: cibles.horsInvestisseurs });
   }

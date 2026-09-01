@@ -3,7 +3,7 @@ import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises, exigerAdmin } from "@/lib/portee";
 import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
-import { preparer, renommerCampagne, supprimerCampagne } from "@/lib/mailer";
+import { preparer, renommerCampagne, supprimerCampagne, RefusMailer } from "@/lib/mailer";
 
 /*
  * Une campagne existante : lire, renommer, completer, annuler ce qui n'est pas
@@ -65,9 +65,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       erreur: `${segment_id ? "segment" : "liste"} inconnu sur ce mandat` });
     if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
-    const prep = await preparer({ campaign_id: id, name: camp.NAME, csv: cibles.csv,
-                                  client_id: cid,
-                                  template_ids: Array.isArray(template_ids) ? template_ids : undefined });
+    let prep;
+    try {
+      prep = await preparer({ campaign_id: id, name: camp.NAME, csv: cibles.csv,
+                              client_id: cid,
+                              template_ids: Array.isArray(template_ids) ? template_ids : undefined });
+    } catch (e) {
+      if (e instanceof RefusMailer) return res.status(422).json({ erreur: e.message });
+      throw e;
+    }
     return res.json({ ok: true, ...prep, hors_investisseurs: cibles.horsInvestisseurs });
   }
 

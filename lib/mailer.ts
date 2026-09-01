@@ -8,6 +8,18 @@
 const BASE = process.env.MAILER_BASE || "http://arx-mailer:8080";
 const SECRET = process.env.MAILER_SECRET || "";
 
+/*
+ * Refus du routeur — a distinguer d'une panne.
+ *
+ * « aucun gabarit actif », « quota atteint », « campagne inconnue » sont des
+ * reponses metier. appelMailer les leve comme des erreurs ; sans ce type, les
+ * appelants les transformaient en 500 « Internal Server Error », et l'ecran
+ * n'apprenait rien a personne. Constate le 2026-09-01.
+ */
+export class RefusMailer extends Error {
+  constructor(message: string, readonly statut: number) { super(message); }
+}
+
 export async function appelMailer(chemin: string, corps?: unknown, methode = "POST") {
   const r = await fetch(BASE + chemin, {
     method: corps === undefined ? (methode === "POST" ? "GET" : methode) : methode,
@@ -20,7 +32,8 @@ export async function appelMailer(chemin: string, corps?: unknown, methode = "PO
   const texte = await r.text();
   let json: unknown;
   try { json = JSON.parse(texte); } catch { json = { brut: texte.slice(0, 300) }; }
-  if (!r.ok) throw new Error((json as { erreur?: string }).erreur || `mailer ${r.status}`);
+  if (!r.ok) throw new RefusMailer(
+    (json as { erreur?: string }).erreur || `mailer ${r.status}`, r.status);
   return json as Record<string, unknown>;
 }
 
