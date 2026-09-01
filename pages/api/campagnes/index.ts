@@ -33,9 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     // Le ciblage est le referentiel : reserve aux roles Arx.
     if (!contactsAutorises(p)) return res.status(403).json({ erreur: "creation reservee a Arx" });
-    const { nom, segment_id, liste_id, expediteur_id, limite } = (req.body ?? {}) as
-      { nom?: string; segment_id?: number; liste_id?: number;
-        expediteur_id?: number; limite?: number };
+    const { nom, segment_id, liste_id, expediteur_id, limite, template_ids } =
+      (req.body ?? {}) as { nom?: string; segment_id?: number; liste_id?: number;
+        expediteur_id?: number; limite?: number; template_ids?: string[] };
     if (!nom?.trim() || !expediteur_id || (!segment_id && !liste_id))
       return res.status(400).json({ erreur: "nom, expediteur_id et un segment OU une liste requis" });
     if (segment_id && liste_id)
@@ -70,6 +70,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const prep = await preparer({
       name: nom.trim(), csv: cibles.csv,
       client_id: cid, sender_email: e.EMAIL, sender_name: e.NOM_AFFICHAGE,
+      // Gabarits imposes : sans cela, deux gabarits actifs de meme langue se
+      // departagent tout seuls et l'expediteur ignore lequel part.
+      template_ids: Array.isArray(template_ids) ? template_ids : undefined,
     });
     return res.json({ ok: true, ...prep,
       hors_investisseurs: cibles.horsInvestisseurs });

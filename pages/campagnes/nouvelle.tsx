@@ -25,7 +25,11 @@ function Nouvelle() {
   const [listeId, setListeId] = useState(0);
   const [expediteurId, setExpediteurId] = useState(0);
   const [limite, setLimite] = useState(200);
+  // Un gabarit retenu par langue. Le moteur choisit la langue du contact ; a
+  // nous de dire QUEL gabarit represente cette langue pour cette campagne.
+  const [choix, setChoix] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
+  const langues = [...new Set(gabarits.map(g => String(g.LANGUAGE)))].sort();
   // Combien partiraient, si on preparait maintenant. Lu avant, pas apres.
   const [apercu, setApercu] = useState<{ cibles: number; nouveaux: number } | null>(null);
 
@@ -37,7 +41,15 @@ function Nouvelle() {
       .then(d => setExpediteurs(d.rows || []));
     fetch(`/capgrowth/api/listes?client=${mandat.ID}`).then(r => r.json())
       .then(d => setListes(d.rows || []));
-    fetch(`/capgrowth/api/gabarits`).then(r => r.json()).then(d => setGabarits(d.rows || []));
+    fetch(`/capgrowth/api/gabarits`).then(r => r.json()).then(d => {
+      const rows = d.rows || [];
+      setGabarits(rows);
+      // Par defaut, le plus recemment mis a jour de chaque langue — mais le
+      // defaut est AFFICHE, jamais subi.
+      const parLangue: Record<string, string> = {};
+      for (const g of rows) if (!parLangue[g.LANGUAGE]) parLangue[g.LANGUAGE] = g.TEMPLATE_ID;
+      setChoix(parLangue);
+    });
   }, [mandat]);
 
   useEffect(() => {
@@ -55,6 +67,7 @@ function Nouvelle() {
     const r = await fetch(`/capgrowth/api/campagnes?client=${mandat.ID}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nom, expediteur_id: expediteurId, limite,
+        template_ids: Object.values(choix).filter(Boolean),
         ...(source === "segment" ? { segment_id: segmentId } : { liste_id: listeId }) }) });
     const j = await r.json();
     if (!r.ok) { setMsg(j.erreur); return; }
@@ -132,12 +145,31 @@ function Nouvelle() {
           value={limite} onChange={e => setLimite(Number(e.target.value))} /></label>
       <div>
         <div style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>
-          Gabarits actifs — choisis automatiquement selon la langue du contact</div>
-        {gabarits.map(g => <div key={g.TEMPLATE_ID} style={{ padding: "5px 0",
-          borderBottom: "1px solid var(--hair-soft)", fontSize: 11 }}>
-          <span className="pill">{g.LANGUAGE}</span> {g.SUBJECT} <i style={{ color: "var(--ink-3)" }}>v{g.VERSION}</i>
-        </div>)}
+          Gabarit retenu par langue — le moteur applique celui de la langue du contact
+        </div>
+        {langues.map(lg => {
+          const candidats = gabarits.filter(g => g.LANGUAGE === lg);
+          return (
+            <div key={lg} style={{ display: "flex", gap: 8, alignItems: "center",
+              padding: "5px 0", borderBottom: "1px solid var(--hair-soft)" }}>
+              <span className="pill">{lg}</span>
+              <select style={{ flex: 1 }} value={choix[lg] || ""}
+                onChange={e => setChoix({ ...choix, [lg]: e.target.value })}>
+                <option value="">— ne pas écrire dans cette langue</option>
+                {candidats.map(g => <option key={g.TEMPLATE_ID} value={g.TEMPLATE_ID}>
+                  {g.SUBJECT} (v{g.VERSION})</option>)}
+              </select>
+              {candidats.length > 1 && <span className="pill warn">{candidats.length} au choix</span>}
+            </div>);
+        })}
+        {!gabarits.length && <span className="pill crit">
+          Aucun gabarit actif : la campagne ne pourrait rien envoyer.</span>}
+        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 6 }}>
+          Un contact dont la langue n&apos;a pas de gabarit retenu n&apos;est pas préparé —
+          il est compté et dit, pas envoyé au hasard dans une autre langue.
+        </div>
       </div>
+
       {apercu && (
         <span className={apercu.cibles ? "pill" : "pill crit"}>
           {apercu.cibles} contact(s) partiraient

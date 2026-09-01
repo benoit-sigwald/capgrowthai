@@ -23,6 +23,8 @@ function Panneau({ c, surFermer, surChange }: {
   const [listes, setListes] = useState<{ ID: number; NOM: string; MEMBRES: number }[]>([]);
   const [cible, setCible] = useState("");   // « s:12 » ou « l:3 »
   const [limite, setLimite] = useState(200);
+  const [gabarits, setGabarits] = useState<Record<string, string>[]>([]);
+  const [choix, setChoix] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
   const envoyes = Number(c.ENVOYES) || 0;
   const attente = Number(c.EN_ATTENTE) || 0;
@@ -33,6 +35,13 @@ function Panneau({ c, surFermer, surChange }: {
       .then(d => setSegments(d.rows || []));
     fetch(`/capgrowth/api/listes?client=${mandat.ID}`).then(r => r.json())
       .then(d => setListes(d.rows || []));
+    fetch(`/capgrowth/api/gabarits`).then(r => r.json()).then(d => {
+      const rows = d.rows || [];
+      setGabarits(rows);
+      const parLangue: Record<string, string> = {};
+      for (const g of rows) if (!parLangue[g.LANGUAGE]) parLangue[g.LANGUAGE] = g.TEMPLATE_ID;
+      setChoix(parLangue);
+    });
   }, [mandat]);
 
   async function agir(methode: string, corps: unknown, encours: string) {
@@ -73,12 +82,24 @@ function Panneau({ c, surFermer, surChange }: {
           <button className="btn bleu" disabled={!cible} onClick={async () => {
             const [type, id] = cible.split(":");
             const j = await agir("POST", { limite,
+              template_ids: Object.values(choix).filter(Boolean),
               ...(type === "s" ? { segment_id: Number(id) } : { liste_id: Number(id) }) },
               "Préparation…");
             if (j) setMsg(`${j.prepares} envoi(s) ajouté(s)`
               + (j.ignores?.deja_cible ? ` — ${j.ignores.deja_cible} déjà ciblé(s) par cette campagne` : "")
               + (j.contacts_crees ? `, ${j.contacts_crees} nouveau(x) destinataire(s)` : "") + ".");
           }}>Ajouter</button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--ink-3)", minWidth: 108 }}>Gabarit par langue</span>
+          {[...new Set(gabarits.map(g => String(g.LANGUAGE)))].sort().map(lg => (
+            <select key={lg} value={choix[lg] || ""}
+              onChange={e => setChoix({ ...choix, [lg]: e.target.value })}>
+              <option value="">{lg} — aucun</option>
+              {gabarits.filter(g => g.LANGUAGE === lg).map(g =>
+                <option key={g.TEMPLATE_ID} value={g.TEMPLATE_ID}>
+                  {lg} · {String(g.SUBJECT).slice(0, 40)} (v{g.VERSION})</option>)}
+            </select>))}
         </div>
         <p style={{ fontSize: 11, color: "var(--ink-3)", margin: 0 }}>
           L&apos;ajout garde l&apos;expéditeur de la campagne ({String(c.EXPEDITEUR_EMAIL || "—")}) :

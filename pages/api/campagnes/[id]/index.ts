@@ -51,8 +51,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     // Completer : meme expediteur, meme mandat, memes gabarits. Le mailer
     // ecarte de lui-meme les adresses deja ciblees par cette campagne.
-    const { segment_id, liste_id, limite } = (req.body ?? {}) as
-      { segment_id?: number; liste_id?: number; limite?: number };
+    const { segment_id, liste_id, limite, template_ids } = (req.body ?? {}) as
+      { segment_id?: number; liste_id?: number; limite?: number; template_ids?: string[] };
     if (!segment_id && !liste_id)
       return res.status(400).json({ erreur: "un segment ou une liste requis" });
     if (!camp.EXPEDITEUR_EMAIL)
@@ -66,7 +66,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!cibles.nombre) return res.status(422).json({ erreur: "segment vide cote investisseurs" });
 
     const prep = await preparer({ campaign_id: id, name: camp.NAME, csv: cibles.csv,
-                                  client_id: cid });
+                                  client_id: cid,
+                                  template_ids: Array.isArray(template_ids) ? template_ids : undefined });
     return res.json({ ok: true, ...prep, hors_investisseurs: cibles.horsInvestisseurs });
   }
 
