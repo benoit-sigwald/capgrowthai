@@ -8,8 +8,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sql = p.role === "admin"
     ? `SELECT ID, NOM, MODE_EXPEDITEUR FROM CLIENT ORDER BY NOM`
     : `SELECT c.ID, c.NOM, c.MODE_EXPEDITEUR FROM CLIENT c
-        JOIN AFFECTATION a ON a.CLIENT_ID = c.ID AND a.UTILISATEUR_ID = :uid
+        JOIN AFFECTATION a ON a.CLIENT_ID = c.ID AND a.UTILISATEUR_ID = :u
         ORDER BY c.NOM`;
-  const r = await q(sql, p.role === "admin" ? {} : { uid: p.uid });
+  const r = await q(sql, p.role === "admin" ? {} : { u: p.uid });
   res.json({ role: p.role, mandats: r.rows });
 }

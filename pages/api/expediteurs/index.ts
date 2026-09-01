@@ -19,12 +19,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "GET") {
     // En mode « utilisateur », chacun ne voit que ses adresses — l'admin voit tout.
     const filtreProprio = modeExp === "utilisateur" && p.role !== "admin"
-      ? `AND (UTILISATEUR_ID = :uid OR UTILISATEUR_ID IS NULL)` : ``;
+      ? `AND (UTILISATEUR_ID = :u OR UTILISATEUR_ID IS NULL)` : ``;
     const r = await q(`SELECT ID, EMAIL, NOM_AFFICHAGE, DOMAINE, UTILISATEUR_ID,
                               BREVO_ID, SPF_OK, DKIM_OK, VERIFIE_LE
                          FROM EXPEDITEUR WHERE CLIENT_ID = :cid ${filtreProprio}
                         ORDER BY EMAIL`,
-                      filtreProprio ? { cid, uid: p.uid } : { cid });
+                      filtreProprio ? { cid, u: p.uid } : { cid });
     return res.json({ mode: modeExp, rows: r.rows });
   }
 
@@ -53,8 +53,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                ON (e.CLIENT_ID = s.CID AND e.EMAIL = s.EM)
              WHEN MATCHED THEN UPDATE SET NOM_AFFICHAGE = :nom, BREVO_ID = NVL(:bid, BREVO_ID)
              WHEN NOT MATCHED THEN INSERT (CLIENT_ID, UTILISATEUR_ID, EMAIL, NOM_AFFICHAGE, DOMAINE, BREVO_ID)
-               VALUES (:cid, :uid, :em, :nom, :dom, :bid)`,
-            { cid, uid, em: adresse, nom: nom.trim(),
+               VALUES (:cid, :u, :em, :nom, :dom, :bid)`,
+            { cid, u: uid, em: adresse, nom: nom.trim(),
               dom: adresse.split("@")[1], bid: brevoId });
 
     const id = (await q(`SELECT ID FROM EXPEDITEUR WHERE CLIENT_ID = :cid AND EMAIL = :em`,
