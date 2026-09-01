@@ -41,6 +41,7 @@ export const envoyerLot = (campaign_id: string, batch: number) =>
  */
 export const renommerCampagne = (campaign_id: string, name: string) =>
   appelMailer(`/campaigns/${encodeURIComponent(campaign_id)}`, { name }, "PATCH");
-export const supprimerCampagne = (campaign_id: string, enAttenteSeulement: boolean) =>
+export const supprimerCampagne = (campaign_id: string, enAttenteSeulement: boolean,
+                                  forcer = false) =>
   appelMailer(`/campaigns/${encodeURIComponent(campaign_id)}`,
-              { en_attente_seulement: enAttenteSeulement }, "DELETE");
+              { en_attente_seulement: enAttenteSeulement, forcer }, "DELETE");

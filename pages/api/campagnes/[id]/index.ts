@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { q } from "@/lib/oracle";
 import { porteeDepuis } from "@/lib/auth";
-import { clientAutorise, contactsAutorises } from "@/lib/portee";
+import { clientAutorise, contactsAutorises, exigerAdmin } from "@/lib/portee";
 import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
 import { preparer, renommerCampagne, supprimerCampagne } from "@/lib/mailer";
 
@@ -72,7 +72,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === "DELETE") {
     const n = await compte();
-    const { annuler_en_attente } = (req.body ?? {}) as { annuler_en_attente?: boolean };
+    const { annuler_en_attente, forcer } = (req.body ?? {}) as
+      { annuler_en_attente?: boolean; forcer?: boolean };
 
     // Le mailer recalcule TOTAL_TARGETED : sinon les taux se liraient sur une
     // cible qui n'existe plus et paraitraient moins bons qu'ils ne sont.
@@ -83,13 +84,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
      * envois sont la trace de ce que des gens ont recu, et les ouvertures et
      * reponses continuent d'y arriver. On propose d'annuler le reste.
      */
-    if (n.ENVOYES)
+    /*
+     * Passer outre reste possible — une campagne de test doit pouvoir
+     * disparaitre — mais c'est une decision d'administrateur, prise
+     * explicitement, et l'ecran dit ce qu'elle emporte.
+     */
+    if (n.ENVOYES && forcer && !exigerAdmin(p))
+      return res.status(403).json({ erreur: "supprimer une campagne deja partie : reserve a l'administrateur" });
+    if (n.ENVOYES && !forcer)
       return res.status(409).json({
         erreur: `${n.ENVOYES} e-mail(s) déjà partis : cette campagne ne se supprime pas. `
               + `Vous pouvez annuler les ${n.EN_ATTENTE} envoi(s) en attente.`,
         envoyes: n.ENVOYES, en_attente: n.EN_ATTENTE });
 
-    return res.json({ ...(await supprimerCampagne(id, false)), supprimes: n.EN_ATTENTE });
+    return res.json({ ...(await supprimerCampagne(id, false, !!forcer)),
+                      supprimes: n.EN_ATTENTE, envois_effaces: forcer ? n.ENVOYES : 0 });
   }
 
   res.setHeader("Allow", ["GET", "PATCH", "POST", "DELETE"]); res.status(405).end();

@@ -97,8 +97,18 @@ function Panneau({ c, surFermer, surChange }: {
             const j = await agir("DELETE", {}, "Suppression…");
             if (j) { setMsg("Campagne supprimée."); surFermer(); }
           }}>Supprimer la campagne</button>
+          {envoyes > 0 && (
+            <button className="btn" style={{ color: "var(--crit)" }} onClick={async () => {
+              if (!confirm(`Supprimer « ${c.NAME} » AVEC ses ${envoyes} envoi(s) déjà partis ?
+
+`
+                + `Les taux, ouvertures et réponses de cette campagne disparaissent définitivement. `
+                + `À réserver aux campagnes de test.`)) return;
+              const j = await agir("DELETE", { forcer: true }, "Suppression…");
+              if (j) { setMsg("Campagne et historique supprimés."); surFermer(); }
+            }}>Supprimer avec l&apos;historique</button>)}
           {envoyes > 0 && <span className="pill warn" style={{ alignSelf: "center" }}>
-            {envoyes} e-mail(s) partis : la campagne ne peut plus être supprimée, seulement vidée de son attente.
+            {envoyes} e-mail(s) partis : la suppression simple est refusée, il faut la demander avec l&apos;historique.
           </span>}
         </div>
         {msg && <span style={{ fontSize: 11, color: "var(--ink-2)" }}>{msg}</span>}
