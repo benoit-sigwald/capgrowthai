@@ -9,9 +9,9 @@ import { useMandat } from "@/lib/mandat";
  * perdre plus de temps qu'il n'en fait gagner.
  */
 const SECTIONS: { id: string; libelle: string; etat: "actif" | "a_venir" | "indisponible"; motif?: string }[] = [
-  { id: "", libelle: "Tableau de bord", etat: "a_venir", motif: "tranche 2" },
+  { id: "", libelle: "Tableau de bord", etat: "actif" },
   { id: "contacts", libelle: "Contacts", etat: "actif" },
-  { id: "campagnes", libelle: "Campagnes", etat: "a_venir", motif: "tranche 2" },
+  { id: "campagnes", libelle: "Campagnes", etat: "actif" },
   { id: "automatisation", libelle: "Automatisation", etat: "a_venir", motif: "tranche 5" },
   { id: "modeles", libelle: "Modèles", etat: "a_venir", motif: "tranche 5" },
   { id: "statistiques", libelle: "Statistiques", etat: "a_venir", motif: "tranche 5" },
@@ -20,7 +20,7 @@ const SECTIONS: { id: string; libelle: string; etat: "actif" | "a_venir" | "indi
   { id: "sms", libelle: "SMS", etat: "indisponible", motif: "Aucun crédit SMS Brevo" },
   { id: "whatsapp", libelle: "WhatsApp", etat: "indisponible", motif: "Pas de compte WhatsApp Business" },
   { id: "conversations", libelle: "Conversations", etat: "indisponible", motif: "Aucun widget de chat installé" },
-  { id: "parametres", libelle: "Paramètres", etat: "a_venir", motif: "tranche 2" },
+  { id: "parametres", libelle: "Paramètres", etat: "actif" },
 ];
 
 export default function Coquille({ section, children }: { section: string; children: React.ReactNode }) {

@@ -12,6 +12,7 @@ if ! sudo test -s /root/.capgrowth_secret; then
   sudo chmod 600 /root/.capgrowth_secret
 fi
 SECRET=$(sudo cat /root/.capgrowth_secret)
+MAILER_SECRET=$(sudo cat /root/.mailer_secret)
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --network coolify --restart unless-stopped \
@@ -23,7 +24,7 @@ docker run -d --name "$NAME" --network coolify --restart unless-stopped \
   -e ORA_WALLET_PASSWORD="$ORA_WALLET_PASSWORD" \
   -e NEXTAUTH_SECRET="$SECRET" \
   -e NEXTAUTH_URL=https://arx-consulting.com/capgrowth \
-  -e HOSTNAME=0.0.0.0 \
+  -e HOSTNAME=0.0.0.0   -e MAILER_BASE=http://arx-mailer:8080   -e MAILER_SECRET="$MAILER_SECRET" \
   -l traefik.enable=true \
   -l 'traefik.http.routers.capgrowth-http.rule=Host(`arx-consulting.com`) && PathPrefix(`/capgrowth`)' \
   -l traefik.http.routers.capgrowth-http.entrypoints=http \
