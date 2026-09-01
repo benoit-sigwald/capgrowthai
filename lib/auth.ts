@@ -22,23 +22,28 @@ export const authOptions: NextAuthOptions = {
         if (!u || !bcrypt.compareSync(cred.motdepasse, u.HASH)) return null;
         // Les affectations entrent dans le jeton a la connexion. Une nouvelle
         // affectation prend effet a la reconnexion — compromis assume en v1.
-        const a = await q(`SELECT CLIENT_ID FROM AFFECTATION WHERE UTILISATEUR_ID = :id`, { id: u.ID });
-        const clientIds = (a.rows as { CLIENT_ID: number }[]).map(x => x.CLIENT_ID);
+        const a = await q(`SELECT CLIENT_ID, ROLE FROM AFFECTATION WHERE UTILISATEUR_ID = :id`,
+                          { id: u.ID });
+        const lignes = a.rows as { CLIENT_ID: number; ROLE: "membre" | "client" }[];
+        const clientIds = lignes.map(x => x.CLIENT_ID);
+        const droits = Object.fromEntries(lignes.map(x => [x.CLIENT_ID, x.ROLE]));
         return { id: String(u.ID), email: u.EMAIL, name: u.NOM,
-                 role: u.ROLE, clientIds } as never;
+                 role: u.ROLE, clientIds, droits } as never;
       },
     }),
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user) { const u = user as never as { role: Role; clientIds: number[] };
-        token.role = u.role; token.clientIds = u.clientIds; }
+      if (user) { const u = user as never as
+          { role: Role; clientIds: number[]; droits: Record<number, "membre" | "client"> };
+        token.role = u.role; token.clientIds = u.clientIds; token.droits = u.droits; }
       return token;
     },
     session({ session, token }) {
       (session as never as { portee: Portee }).portee = {
         uid: Number(token.sub), role: token.role as Role,
         clientIds: (token.clientIds as number[]) || [],
+        droits: (token.droits as Record<number, "membre" | "client">) || {},
       };
       return session;
     },

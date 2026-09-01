@@ -54,6 +54,13 @@ function Nouvelle() {
           <option value={0}>—</option>
           {segments.map(s => <option key={s.ID} value={s.ID}>{s.NOM}</option>)}
         </select></label>
+      {/* Une liste vide doit dire pourquoi et ou aller : un « — » muet laisse
+          croire a une panne alors que c'est le cloisonnement qui fonctionne. */}
+      {!segments.length && (
+        <span className="pill warn">
+          Aucun segment sur le mandat « {mandat?.NOM} ». Créez-en un dans
+          Contacts → Segments, ou changez de mandat en haut à gauche.</span>)}
+
       <label>Expéditeur
         <select style={{ width: "100%", marginTop: 4 }} value={expediteurId}
           onChange={e => setExpediteurId(Number(e.target.value))}>
@@ -64,6 +71,14 @@ function Nouvelle() {
               {x["EMAIL"]}{(!x["SPF_OK"] || !x["DKIM_OK"]) ? " — domaine non authentifié" : ""}
             </option>))}
         </select></label>
+      {!expediteurs.length && (
+        <span className="pill warn">
+          Aucun expéditeur sur le mandat « {mandat?.NOM} ». Ajoutez-en un dans
+          Paramètres → Expéditeurs ; son domaine devra être authentifié avant d&apos;envoyer.</span>)}
+      {expediteurs.length > 0 && !expediteurs.some(x => x["SPF_OK"] && x["DKIM_OK"]) && (
+        <span className="pill crit">
+          Aucun expéditeur authentifié : SPF et DKIM manquent. Paramètres → Expéditeurs
+          affiche les lignes DNS exactes à coller.</span>)}
       <label>Limite de cibles
         <input type="number" style={{ width: 120, marginTop: 4, display: "block" }}
           value={limite} onChange={e => setLimite(Number(e.target.value))} /></label>
