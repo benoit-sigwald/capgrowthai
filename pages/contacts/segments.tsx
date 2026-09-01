@@ -2,12 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import Coquille from "@/components/Coquille";
 import SousMenuContacts from "@/components/SousMenuContacts";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
+import { nomLangue } from "@/components/TableContacts";
 
 function Segments() {
   const { mandat } = useMandat();
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [nom, setNom] = useState("");
-  const [filtre, setFiltre] = useState({ source: "investors", canal: "email", pays: "" });
+  const [filtre, setFiltre] = useState({ source: "investors", canal: "email", pays: "", langues: "" });
+  const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
+  useEffect(() => {
+    fetch("/capgrowth/api/langues").then(r => r.json())
+      .then(d => setLanguesDispo(d.rows || [])).catch(() => {});
+  }, []);
+  const choisies = filtre.langues ? filtre.langues.split(",").filter(Boolean) : [];
   const [apercu, setApercu] = useState<{ total: number } | null>(null);
 
   const charger = useCallback(() => {
@@ -42,6 +49,23 @@ function Segments() {
       <input placeholder="Pays (FR…)" value={filtre.pays} style={{ width: 90 }}
         onChange={e => setFiltre({ ...filtre, pays: e.target.value })} />
       <button className="btn bleu" onClick={creer}>Enregistrer le segment</button>
+    </div>
+    {/* La langue decide du gabarit qui partira : c'est le critere de segment
+        le plus utile apres le canal. */}
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+      <span style={{ fontSize: 11, color: "var(--ink-3)", alignSelf: "center" }}>Langues :</span>
+      {languesDispo.slice(0, 12).map(l => (
+        <button key={l.LANGUE}
+          className="chip btn"
+          style={{ padding: "4px 12px",
+            background: choisies.includes(l.LANGUE) ? "var(--blue)" : "var(--card)",
+            borderColor: choisies.includes(l.LANGUE) ? "var(--blue)" : "var(--hair)",
+            color: choisies.includes(l.LANGUE) ? "#fff" : "var(--ink-2)" }}
+          onClick={() => {
+            const n = choisies.includes(l.LANGUE)
+              ? choisies.filter(c => c !== l.LANGUE) : [...choisies, l.LANGUE];
+            setFiltre({ ...filtre, langues: n.join(",") });
+          }}>{nomLangue(l.LANGUE)} <span style={{ opacity: .7 }}>{l.N}</span></button>))}
     </div>
     {apercu && <p><span className="pill ok">{apercu.total.toLocaleString("fr-FR")} personnes aujourd&apos;hui</span></p>}
     <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>

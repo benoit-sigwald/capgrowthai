@@ -3,8 +3,18 @@ import { useEffect, useState, useCallback } from "react";
 export type Personne = {
   PERSON_KEY: string; SOURCE: string; FIRST_NAME: string | null; LAST_NAME: string | null;
   EMAIL: string | null; LINKEDIN_URL: string | null; TITLE: string | null;
-  COMPANY: string | null; CITY: string | null; COUNTRY: string | null; OPT_OUT: number;
+  COMPANY: string | null; CITY: string | null; COUNTRY: string | null;
+  LANGUES: string | null; OPT_OUT: number;
 };
+
+// Noms des langues : « fr » ne dit rien a qui parcourt une liste.
+const NOM_LANGUE: Record<string, string> = {
+  fr: "français", en: "anglais", de: "allemand", nl: "néerlandais", it: "italien",
+  es: "espagnol", pt: "portugais", he: "hébreu", ar: "arabe", zh: "chinois",
+  ru: "russe", no: "norvégien", sv: "suédois", da: "danois", fi: "finnois",
+  pl: "polonais", tr: "turc", ja: "japonais", ko: "coréen",
+};
+export const nomLangue = (c: string) => NOM_LANGUE[c] || c;
 
 const BASES: Record<string, string> = { investors: "Investisseurs", prospects: "Prospects PACA",
   prospects_dirigeant: "Dirigeants" };
@@ -20,7 +30,21 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
   const [page, setPage] = useState(0);
   // « joignable » par defaut : les 70 009 fiches de registre sans canal
   // masqueraient tout le reste. Lecon mesuree sur l'outil precedent.
-  const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable" });
+  const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable", langues: "" });
+  const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
+  const [ouvertLangues, setOuvertLangues] = useState(false);
+
+  useEffect(() => {
+    fetch("/capgrowth/api/langues").then(r => r.json())
+      .then(d => setLanguesDispo(d.rows || [])).catch(() => {});
+  }, []);
+
+  const choisies = filtre.langues ? filtre.langues.split(",").filter(Boolean) : [];
+  const basculerLangue = (code: string) => {
+    const n = choisies.includes(code) ? choisies.filter(c => c !== code) : [...choisies, code];
+    setFiltre({ ...filtre, langues: n.join(",") });
+    setPage(0);
+  };
 
   const charger = useCallback(() => {
     const u = new URLSearchParams({ ...filtre, page: String(page) });
@@ -47,6 +71,31 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
           <option value="linkedin">Avec LinkedIn</option>
           <option value="">Tout le référentiel</option>
         </select>
+        <div style={{ position: "relative" }}>
+          <button className="btn" onClick={() => setOuvertLangues(o => !o)}>
+            {choisies.length
+              ? `Langues : ${choisies.map(nomLangue).join(", ")}`
+              : "Toutes les langues"}
+          </button>
+          {ouvertLangues && (
+            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
+              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
+              boxShadow: "var(--shadow)", padding: 10, minWidth: 190, maxHeight: 280,
+              overflowY: "auto" }}>
+              {languesDispo.map(l => (
+                <label key={l.LANGUE} style={{ display: "flex", gap: 6, alignItems: "center",
+                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
+                  <input type="checkbox" checked={choisies.includes(l.LANGUE)}
+                    onChange={() => basculerLangue(l.LANGUE)} />
+                  {nomLangue(l.LANGUE)}
+                  <span style={{ color: "var(--ink-3)", marginLeft: "auto" }}>{l.N}</span>
+                </label>))}
+              {choisies.length > 0 && (
+                <button className="btn" style={{ width: "100%", marginTop: 6 }}
+                  onClick={() => { setFiltre({ ...filtre, langues: "" }); setPage(0); }}>
+                  Tout décocher</button>)}
+            </div>)}
+        </div>
         <span style={{ alignSelf: "center", color: "var(--ink-3)" }}>
           {total.toLocaleString("fr-FR")} contact{total > 1 ? "s" : ""}</span>
       </div>
@@ -55,7 +104,7 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
         <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
           <thead><tr>
             {surSelection && <th />}
-            {["Nom", "Société / titre", "Base", "E-mail", "Lieu"].map(h =>
+            {["Nom", "Société / titre", "Base", "E-mail", "Langues"].map(h =>
               <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontSize: 10,
                 color: "var(--ink-3)", borderBottom: "1px solid var(--hair-soft)" }}>{h}</th>)}
           </tr></thead>
@@ -73,7 +122,11 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
                   {r.COMPANY || "—"}{r.TITLE ? ` · ${r.TITLE}` : ""}</td>
                 <td style={{ padding: "7px 12px" }}><span className="pill">{nomBase(r.SOURCE)}</span></td>
                 <td style={{ padding: "7px 12px" }}>{r.EMAIL || "—"}</td>
-                <td style={{ padding: "7px 12px" }}>{[r.CITY, r.COUNTRY].filter(Boolean).join(", ") || "—"}</td>
+                <td style={{ padding: "7px 12px" }} title={[r.CITY, r.COUNTRY].filter(Boolean).join(", ")}>
+                  {r.LANGUES
+                    ? r.LANGUES.split(",").map(l => (
+                        <span key={l} className="pill" style={{ marginRight: 3 }}>{nomLangue(l)}</span>))
+                    : <span className="pill warn">inconnue</span>}</td>
               </tr>))}
             {!rows.length && <tr><td colSpan={6} style={{ padding: 24, textAlign: "center",
               color: "var(--ink-3)" }}>Aucun résultat.</td></tr>}

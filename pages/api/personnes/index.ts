@@ -15,7 +15,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const off = Number(params.page || 0) * 60;
 
   const r = await q(`SELECT PERSON_KEY, SOURCE, FIRST_NAME, LAST_NAME, EMAIL, LINKEDIN_URL,
-                            TITLE, COMPANY, CITY, COUNTRY, PHONE, TERRITOIRE, SECTEUR, OPT_OUT
+                            TITLE, COMPANY, CITY, COUNTRY, PHONE, TERRITOIRE, SECTEUR,
+                            LANGUES, OPT_OUT
                        FROM V_PERSONNES WHERE ${where}
                       ORDER BY LAST_NAME, FIRST_NAME
                       OFFSET :off ROWS FETCH NEXT 60 ROWS ONLY`, { ...binds, off });

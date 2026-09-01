@@ -70,5 +70,40 @@ export function construireFiltre(p: Record<string, string | undefined>) {
   if (p.territoire) { w.push(`TERRITOIRE = :territoire`); binds.territoire = p.territoire; }
   if (p.secteur) { w.push(`SECTEUR = :secteur`); binds.secteur = p.secteur; }
   if (p.optout === "1") w.push(`OPT_OUT = 1`);
+
+  // Langues : une ou plusieurs, separees par des virgules (« fr,en »).
+  // LANGUES vaut « fr,en » : on encadre de virgules des deux cotes pour que
+  // « en » ne remonte pas « ent » ni un hypothetique « ben ».
+  if (p.langues) {
+    const liste = p.langues.split(",").map(l => l.trim().toLowerCase())
+      .filter(l => /^[a-z]{2}$/.test(l)).slice(0, 12);
+    if (liste.length) {
+      const conditions = liste.map((l, i) => {
+        binds[`lg${i}`] = `%,${l},%`;
+        return `',' || LANGUES || ',' LIKE :lg${i}`;
+      });
+      w.push(`(${conditions.join(" OR ")})`);
+    }
+  }
+  // « Langue inconnue » est un choix a part : on ne peut pas le confondre avec
+  // une langue, et il compte 630 personnes joignables.
+  if (p.langue_inconnue === "1") w.push(`LANGUES IS NULL`);
+
   return { where: w.length ? w.join(" AND ") : "1 = 1", binds };
 }
+
+/*
+ * Les langues reellement presentes dans le referentiel, avec leur effectif.
+ *
+ * L'ecran ne propose que ce qui existe : une liste figee de vingt langues
+ * dont dix-huit ne rendraient rien ferait perdre du temps a chaque usage.
+ */
+export const SQL_LANGUES = `
+  SELECT LANGUE, COUNT(*) N FROM (
+    SELECT TRIM(REGEXP_SUBSTR(LANGUES, '[^,]+', 1, niveaux.n)) LANGUE
+      FROM V_PERSONNES,
+           (SELECT LEVEL n FROM DUAL CONNECT BY LEVEL <= 6) niveaux
+     WHERE LANGUES IS NOT NULL
+       AND (EMAIL IS NOT NULL OR LINKEDIN_URL IS NOT NULL)
+       AND REGEXP_SUBSTR(LANGUES, '[^,]+', 1, niveaux.n) IS NOT NULL)
+   GROUP BY LANGUE ORDER BY N DESC`;
