@@ -26,5 +26,7 @@ export default function Connexion({ csrfToken, erreur }: { csrfToken: string; er
 }
 
 export async function getServerSideProps(ctx: GetServerSidePropsContext) {
-  return { props: { csrfToken: (await getCsrfToken(ctx)) ?? "", erreur: !!ctx.query.error } };
+  // getCsrfToken exige explicitement { req } en pages router : lui passer le
+  // contexte entier rend une chaine vide, et le POST echoue en silence.
+  return { props: { csrfToken: (await getCsrfToken({ req: ctx.req })) ?? "", erreur: !!ctx.query.error } };
 }
