@@ -26,20 +26,57 @@ export interface Cibles { csv: string; nombre: number; horsInvestisseurs: number
  * INVESTORS.CONTACTS portent tous deux EMAIL, et un WHERE non qualifie leverait
  * ORA-00918.
  */
+/*
+ * Le routeur ne sait ecrire qu'aux contacts qu'il connait : MAILING_SENDS
+ * pointe vers DEMARCHAGE par CONTACT_ID. On rapprochait donc les personnes par
+ * leur cle « inv: », et toute personne venue d'une autre source etait ecartee.
+ *
+ * Constate le 2026-09-01 : une liste de deux personnes n'envoyait qu'un
+ * e-mail. La seconde etait la MEME personne, la meme adresse, mais entree par
+ * le gate — donc portant la cle « gate:50:5 » au lieu de « inv:… ». On
+ * l'ecartait alors que le routeur savait parfaitement lui ecrire.
+ *
+ * Le rapprochement se fait desormais sur l'ADRESSE, qui est ce que le courrier
+ * utilise vraiment. Une adresse portee par plusieurs fiches ne rend qu'un
+ * contact — le plus recemment charge — sans quoi la meme personne recevrait
+ * deux fois le meme message.
+ */
+const SQL_CONTACT_PAR_EMAIL = `
+  SELECT CONTACT_ID, EMAIL, LANGUAGES, CLE FROM (
+    SELECT c.CONTACT_ID, c.EMAIL, c.LANGUAGES, LOWER(c.EMAIL) CLE,
+           ROW_NUMBER() OVER (PARTITION BY LOWER(c.EMAIL)
+                              ORDER BY c.LOADED_AT DESC NULLS LAST, c.CONTACT_ID) RANG
+      FROM INVESTORS.CONTACTS c WHERE c.EMAIL IS NOT NULL)
+   WHERE RANG = 1`;
+
 async function selectionner(sousRequete: string, binds: Record<string, unknown>,
                             limite?: number): Promise<Cibles> {
+  /*
+   * Le CONTACT_ID vient du contact rapproche, PAS de la cle de la personne :
+   * MAILING_SENDS pointe vers DEMARCHAGE, un identifiant invente n'y existerait
+   * pas. Et l'on ne garde qu'UNE ligne par adresse — la meme personne figure
+   * jusqu'a cinq fois dans le referentiel (une par porte d'entree), elle ne
+   * doit pas recevoir cinq fois le meme message.
+   */
   const cibles = await q(`
-    SELECT SUBSTR(v.PERSON_KEY, 5) CONTACT_ID, v.EMAIL,
-           TRIM(NVL(v.FIRST_NAME, ' ') || ' ' || NVL(v.LAST_NAME, ' ')) FULL_NAME,
-           v.COUNTRY,
-           REPLACE(REPLACE(REPLACE(NVL(JSON_SERIALIZE(i.LANGUAGES), '[]'),
-                   '[', ''), ']', ''), '"', '') LANGUES
-      FROM (${sousRequete}) v
-      JOIN INVESTORS.CONTACTS i ON 'inv:' || i.CONTACT_ID = v.PERSON_KEY
-     WHERE v.PERSON_KEY LIKE 'inv:%' AND v.EMAIL IS NOT NULL
+    SELECT CONTACT_ID, EMAIL, FULL_NAME, COUNTRY, LANGUES FROM (
+      SELECT i.CONTACT_ID, v.EMAIL,
+             TRIM(NVL(v.FIRST_NAME, ' ') || ' ' || NVL(v.LAST_NAME, ' ')) FULL_NAME,
+             v.COUNTRY,
+             REPLACE(REPLACE(REPLACE(NVL(JSON_SERIALIZE(i.LANGUAGES), '[]'),
+                     '[', ''), ']', ''), '"', '') LANGUES,
+             ROW_NUMBER() OVER (PARTITION BY LOWER(v.EMAIL)
+                                ORDER BY CASE WHEN v.PERSON_KEY LIKE 'inv:%' THEN 0 ELSE 1 END,
+                                         v.PERSON_KEY) RANG
+        FROM (${sousRequete}) v
+        JOIN (${SQL_CONTACT_PAR_EMAIL}) i ON i.CLE = LOWER(v.EMAIL)
+       WHERE v.EMAIL IS NOT NULL)
+     WHERE RANG = 1
      FETCH FIRST ${Math.min(Number(limite) || 500, PLAFOND_CIBLES)} ROWS ONLY`, binds);
-  const horsInv = await q(`SELECT COUNT(*) N FROM (${sousRequete}) v
-     WHERE v.PERSON_KEY NOT LIKE 'inv:%' AND v.EMAIL IS NOT NULL`, binds);
+  const horsInv = await q(`SELECT COUNT(DISTINCT LOWER(v.EMAIL)) N FROM (${sousRequete}) v
+     WHERE v.EMAIL IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM INVESTORS.CONTACTS c
+                        WHERE LOWER(c.EMAIL) = LOWER(v.EMAIL))`, binds);
 
   const lignes = cibles.rows as { CONTACT_ID: string; EMAIL: string; FULL_NAME: string;
     COUNTRY: string | null; LANGUES: string }[];
