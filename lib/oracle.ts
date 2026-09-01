@@ -34,10 +34,12 @@ async function pool(): Promise<oracledb.Pool> {
   return _pool;
 }
 
-export async function q(sql: string, binds: oracledb.BindParameters = {},
+export async function q(sql: string, binds: Record<string, unknown> = {},
                         opts: oracledb.ExecuteOptions = {}) {
   const c = await (await pool()).getConnection();
-  try { return await c.execute(sql, binds, { autoCommit: true, ...opts }); }
+  // Nos binds sont des objets nommes simples ; le type du driver est plus
+  // large (tableaux, descripteurs) et le cast est sans perte.
+  try { return await c.execute(sql, binds as oracledb.BindParameters, { autoCommit: true, ...opts }); }
   finally { await c.close(); }
 }
 
