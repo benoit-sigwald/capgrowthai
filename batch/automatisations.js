@@ -146,8 +146,12 @@ async function main() {
     const sql = DECLENCHEURS[r.DECLENCHEUR];
     if (!sql) { console.log(`  ${r.NOM} : declencheur inconnu (${r.DECLENCHEUR})`); continue; }
 
-    const binds = { cid: r.CLIENT_ID };
-    if (r.DECLENCHEUR === 'sans_reponse') binds.delai = r.DELAI_JOURS ?? 7;
+    // On ne passe que les binds que la requete nomme : Oracle refuse un bind
+    // en trop (ORA-01036), et « inscription » n'est pas filtre par mandat —
+    // un formulaire ne sait pas pour quel mandat il a ete rempli.
+    const binds = {};
+    if (sql.includes(':cid')) binds.cid = r.CLIENT_ID;
+    if (sql.includes(':delai')) binds.delai = r.DELAI_JOURS ?? 7;
 
     // Le NOT EXISTS sur le journal fait toute la surete : une personne deja
     // traitee par cette regle n'y revient pas.
