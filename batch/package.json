@@ -1,0 +1,10 @@
+{
+  "name": "capgrowth-batch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Traitements periodiques : enrichissement, synchronisation du CRM",
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "oracledb": "^6.9.0"
+  }
+}

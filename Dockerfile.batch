@@ -1,0 +1,17 @@
+# Conteneur des traitements periodiques.
+#
+# Volontairement separe de l'application : redeployer l'interface ne doit pas
+# interrompre un passage en cours, et une panne de l'une ne doit pas arreter
+# l'autre. Meme raison d'etre qu'arx-mailer — un service sans interface.
+#
+# Deux dependances seulement : le driver Oracle et le decompresseur de wallet.
+# Rien de Next.js ici, donc pas de compilation.
+FROM node:22-slim
+WORKDIR /app
+COPY batch/package.json ./
+RUN npm install --omit=dev
+COPY batch/ ./
+# Aucun CMD de service : le conteneur dort, les timers systemd font
+# `docker exec`. Un service qui tournerait en boucle dupliquerait la
+# planification que systemd fait deja mieux.
+CMD ["sleep", "infinity"]
