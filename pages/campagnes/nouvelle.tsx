@@ -26,6 +26,8 @@ function Nouvelle() {
   const [expediteurId, setExpediteurId] = useState(0);
   const [limite, setLimite] = useState(200);
   const [msg, setMsg] = useState("");
+  // Combien partiraient, si on preparait maintenant. Lu avant, pas apres.
+  const [apercu, setApercu] = useState<{ cibles: number; hors_investisseurs: number } | null>(null);
 
   useEffect(() => {
     if (!mandat) return;
@@ -37,6 +39,15 @@ function Nouvelle() {
       .then(d => setListes(d.rows || []));
     fetch(`/capgrowth/api/gabarits`).then(r => r.json()).then(d => setGabarits(d.rows || []));
   }, [mandat]);
+
+  useEffect(() => {
+    const id = source === "segment" ? segmentId : listeId;
+    if (!mandat || !id) { setApercu(null); return; }
+    setApercu(null);
+    const cle = source === "segment" ? "segment_id" : "liste_id";
+    fetch(`/capgrowth/api/apercu?client=${mandat.ID}&${cle}=${id}&limite=${limite || 500}`)
+      .then(r => r.json()).then(d => setApercu(d.cibles === undefined ? null : d));
+  }, [mandat, source, segmentId, listeId, limite]);
 
   async function creer() {
     if (!mandat) return;
@@ -127,6 +138,13 @@ function Nouvelle() {
           <span className="pill">{g.LANGUAGE}</span> {g.SUBJECT} <i style={{ color: "var(--ink-3)" }}>v{g.VERSION}</i>
         </div>)}
       </div>
+      {apercu && (
+        <span className={apercu.cibles ? "pill" : "pill crit"}>
+          {apercu.cibles} contact(s) partiraient
+          {apercu.hors_investisseurs > 0 &&
+            ` — ${apercu.hors_investisseurs} écarté(s) : hors base investisseurs, le routeur ne sait pas leur écrire`}
+          {apercu.cibles === 0 && " : cette source ne contient aucun contact joignable"}
+        </span>)}
       <button className="btn bleu"
         disabled={!nom || !expediteurId || !(source === "segment" ? segmentId : listeId)}
         onClick={creer}>Préparer la campagne</button>
