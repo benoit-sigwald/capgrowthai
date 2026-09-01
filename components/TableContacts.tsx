@@ -20,10 +20,15 @@ const BASES: Record<string, string> = { investors: "Investisseurs", prospects: "
   prospects_dirigeant: "Dirigeants" };
 export const nomBase = (s: string) => BASES[s] || (s.startsWith("gate:") ? "Formulaire " + s.slice(5) : s);
 
-export default function TableContacts({ onOuvrir, selection, surSelection }: {
+export default function TableContacts({ onOuvrir, selection, surSelection, surPage, surFiltre }: {
   onOuvrir: (p: Personne) => void;
   selection?: Set<string>;
   surSelection?: (k: string, coche: boolean) => void;
+  // Cocher la case d'en-tete coche les 60 lignes affichees d'un coup.
+  surPage?: (cles: string[], coche: boolean) => void;
+  // Le filtre et le total remontent : c'est ce qui permet de proposer
+  // « selectionner les N du filtre » sans transporter N identifiants.
+  surFiltre?: (filtre: Record<string, string>, total: number) => void;
 }) {
   const [rows, setRows] = useState<Personne[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,8 +54,9 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
   const charger = useCallback(() => {
     const u = new URLSearchParams({ ...filtre, page: String(page) });
     fetch(`/capgrowth/api/personnes?${u}`).then(r => r.json())
-      .then(d => { setRows(d.rows || []); setTotal(d.total || 0); });
-  }, [filtre, page]);
+      .then(d => { setRows(d.rows || []); setTotal(d.total || 0);
+                   surFiltre?.(filtre, d.total || 0); });
+  }, [filtre, page, surFiltre]);
   useEffect(charger, [charger]);
 
   return (
@@ -103,7 +109,12 @@ export default function TableContacts({ onOuvrir, selection, surSelection }: {
         border: "1px solid var(--hair-soft)", boxShadow: "var(--shadow)" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
           <thead><tr>
-            {surSelection && <th />}
+            {surSelection && <th style={{ padding: "9px 0 9px 12px",
+                borderBottom: "1px solid var(--hair-soft)" }}>
+              <input type="checkbox" title="Sélectionner les lignes affichées"
+                checked={rows.length > 0 && rows.every(r => selection?.has(r.PERSON_KEY))}
+                onChange={e => surPage?.(rows.map(r => r.PERSON_KEY), e.target.checked)} />
+            </th>}
             {["Nom", "Société / titre", "Base", "E-mail", "Langues"].map(h =>
               <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontSize: 10,
                 color: "var(--ink-3)", borderBottom: "1px solid var(--hair-soft)" }}>{h}</th>)}
