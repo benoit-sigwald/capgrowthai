@@ -12,10 +12,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const k = String(req.query.key);
 
   if (req.method === "GET") {
-    const f = await q(`SELECT * FROM V_PERSONNES WHERE PERSON_KEY = :k`, { k });
+    const clientId = Number(req.query.client || 0);
+    // Avec un mandat, la fiche porte l'etat DE CE MANDAT : le meme
+    // investisseur peut etre gagne ici et a contacter ailleurs.
+    const f = clientId
+      ? await q(`SELECT p.*, e.STATUT, e.PROPRIETAIRE, e.ACTION_TYPE, e.ACTION_LE,
+                        e.ACTION_NOTE, e.MOTIF_PERTE, e.NOTES AS NOTES_ETAT,
+                        e.DERNIER_CONTACT_LE, e.DERNIER_CANAL, e.DERNIERE_REPONSE_LE
+                   FROM V_PERSONNES p
+                   LEFT JOIN CONTACT_STATE e
+                     ON e.PERSON_KEY = p.PERSON_KEY AND e.CLIENT_ID = :cid
+                  WHERE p.PERSON_KEY = :k`, { k, cid: clientId })
+      : await q(`SELECT * FROM V_PERSONNES WHERE PERSON_KEY = :k`, { k });
     if (!f.rows?.length) return res.status(404).json({ erreur: "personne inconnue" });
     const fiche = f.rows[0] as Record<string, unknown>;
-    const clientId = Number(req.query.client || 0);
+    if (clientId && !fiche.STATUT) fiche.STATUT = "a_contacter";
     const [org, frise, enr, attrs] = await Promise.all([
       fiche.ORG_KEY
         ? q(`SELECT * FROM V_ORGANISATIONS WHERE ORG_KEY = :o`, { o: fiche.ORG_KEY })

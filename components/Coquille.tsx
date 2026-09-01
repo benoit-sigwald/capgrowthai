@@ -16,7 +16,7 @@ const SECTIONS: { id: string; libelle: string; etat: "actif" | "a_venir" | "indi
   { id: "modeles", libelle: "Modèles", etat: "a_venir", motif: "tranche 5" },
   { id: "statistiques", libelle: "Statistiques", etat: "a_venir", motif: "tranche 5" },
   { id: "transactionnel", libelle: "Transactionnel", etat: "a_venir", motif: "tranche 5" },
-  { id: "crm", libelle: "CRM", etat: "a_venir", motif: "tranche 3" },
+  { id: "crm", libelle: "CRM", etat: "actif" },
   { id: "sms", libelle: "SMS", etat: "indisponible", motif: "Aucun crédit SMS Brevo" },
   { id: "whatsapp", libelle: "WhatsApp", etat: "indisponible", motif: "Pas de compte WhatsApp Business" },
   { id: "conversations", libelle: "Conversations", etat: "indisponible", motif: "Aucun widget de chat installé" },
