@@ -34,9 +34,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ erreur: "mode : mandat ou utilisateur" });
     try {
       if (v.id) {
-        // Renommage / changement de mode d'un mandat existant.
-        await q(`UPDATE CLIENT SET NOM = :n, MODE_EXPEDITEUR = NVL(:m, MODE_EXPEDITEUR)
-                  WHERE ID = :id`, { n: v.nom.trim(), m: v.mode ?? null, id: v.id });
+        // Renommage / changement de mode d'un mandat existant. Un UPDATE qui ne
+        // touche aucune ligne n'est pas une reussite : il faut le dire.
+        const r = await q(`UPDATE CLIENT SET NOM = :n, MODE_EXPEDITEUR = NVL(:m, MODE_EXPEDITEUR)
+                            WHERE ID = :id`, { n: v.nom.trim(), m: v.mode ?? null, id: v.id });
+        if (!r.rowsAffected) return res.status(404).json({ erreur: "mandat introuvable" });
       } else {
         await q(`INSERT INTO CLIENT (NOM, MODE_EXPEDITEUR) VALUES (:n, NVL(:m, 'mandat'))`,
                 { n: v.nom.trim(), m: v.mode ?? null });
@@ -64,12 +66,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const usage = await q(`SELECT
         (SELECT COUNT(*) FROM INVESTORS.MAILING_CAMPAIGNS m WHERE m.CLIENT_ID = :id) CAMPAGNES,
         (SELECT COUNT(*) FROM CONTACT_STATE s WHERE s.CLIENT_ID = :id) ETATS,
-        (SELECT COUNT(*) FROM INTERACTION i WHERE i.CLIENT_ID = :id) INTERACTIONS FROM DUAL`,
-      { id });
-    const u = (usage.rows as { CAMPAGNES: number; ETATS: number; INTERACTIONS: number }[])[0];
-    if (u.CAMPAGNES || u.ETATS || u.INTERACTIONS)
+        (SELECT COUNT(*) FROM INTERACTION i WHERE i.CLIENT_ID = :id) INTERACTIONS,
+        -- PROSPECTS.CAMPAGNE precede MAILING_CAMPAIGNS et ne porte aucune cle
+        -- etrangere vers CLIENT : sans ce comptage, ses lignes deviendraient
+        -- orphelines sans que rien ne proteste.
+        (SELECT COUNT(*) FROM CAMPAGNE g WHERE g.CLIENT_ID = :id) CAMPAGNES_ANCIENNES
+        FROM DUAL`, { id });
+    const u = (usage.rows as { CAMPAGNES: number; ETATS: number;
+                               INTERACTIONS: number; CAMPAGNES_ANCIENNES: number }[])[0];
+    const campagnes = u.CAMPAGNES + u.CAMPAGNES_ANCIENNES;
+    if (campagnes || u.ETATS || u.INTERACTIONS)
       return res.status(409).json({
-        erreur: `mandat utilisé : ${u.CAMPAGNES} campagne(s), ${u.ETATS} état(s), ` +
+        erreur: `mandat utilisé : ${campagnes} campagne(s), ${u.ETATS} état(s), ` +
                 `${u.INTERACTIONS} interaction(s). Un historique ne s'efface pas d'un clic.` });
 
     // Ce qui n'est que de la configuration part avec lui.
