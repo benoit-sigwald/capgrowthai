@@ -45,8 +45,12 @@ export async function qLot(sql: string, lignes: Record<string, unknown>[],
                            bindDefs: Record<string, oracledb.BindDefinition>) {
   if (!lignes.length) return { rowsAffected: 0 };
   const c = await (await pool()).getConnection();
-  try { return await c.executeMany(sql, lignes, { autoCommit: true, bindDefs }); }
-  finally { await c.close(); }
+  // Les types du driver attendent BindParameters[] ; nos lignes homogenes en
+  // sont un sous-ensemble, le cast est sans risque.
+  try {
+    return await c.executeMany(sql, lignes as oracledb.BindParameters[],
+                               { autoCommit: true, bindDefs });
+  } finally { await c.close(); }
 }
 
 export async function fermer() {
