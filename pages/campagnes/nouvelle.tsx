@@ -27,7 +27,7 @@ function Nouvelle() {
   const [limite, setLimite] = useState(200);
   const [msg, setMsg] = useState("");
   // Combien partiraient, si on preparait maintenant. Lu avant, pas apres.
-  const [apercu, setApercu] = useState<{ cibles: number; hors_investisseurs: number } | null>(null);
+  const [apercu, setApercu] = useState<{ cibles: number; nouveaux: number } | null>(null);
 
   useEffect(() => {
     if (!mandat) return;
@@ -59,7 +59,7 @@ function Nouvelle() {
     const j = await r.json();
     if (!r.ok) { setMsg(j.erreur); return; }
     setMsg(`Campagne préparée : ${j.prepares} envoi(s) en attente` +
-      (j.hors_investisseurs ? ` — ${j.hors_investisseurs} contact(s) hors base investisseurs écartés` : "") + ".");
+      (j.contacts_crees ? ` — ${j.contacts_crees} nouveau(x) destinataire(s) ajouté(s) à la base de prospection` : "") + ".");
     setTimeout(() => routeur.push("/campagnes"), 1400);
   }
 
@@ -141,8 +141,8 @@ function Nouvelle() {
       {apercu && (
         <span className={apercu.cibles ? "pill" : "pill crit"}>
           {apercu.cibles} contact(s) partiraient
-          {apercu.hors_investisseurs > 0 &&
-            ` — ${apercu.hors_investisseurs} écarté(s) : hors base investisseurs, le routeur ne sait pas leur écrire`}
+          {apercu.nouveaux > 0 &&
+            ` — dont ${apercu.nouveaux} nouveau(x) destinataire(s), inconnus de la base de prospection jusqu'ici`}
           {apercu.cibles === 0 && " : cette source ne contient aucun contact joignable"}
         </span>)}
       <button className="btn bleu"

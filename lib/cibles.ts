@@ -9,9 +9,13 @@ import { construireFiltre } from "./personnes";
  * part, sous quelle langue. Deux implantations de cette question, ce serait
  * deux ciblages qui divergent en silence.
  *
- * Seuls les contacts investisseurs partent : ce sont eux qui portent langue et
- * demarchage, et le mailer les reconnait par CONTACT_ID. Les autres sources
- * sont comptees et dites, pas oubliees.
+ * Tout le monde peut partir, pas seulement la base investisseurs. Le routeur
+ * ouvre une ligne de demarchage pour un destinataire qu'il ne connait pas
+ * encore ; on lui transmet alors la cle de la personne comme identifiant. Ceux
+ * qu'il connait deja gardent le leur, pour ne pas dedoubler leur historique.
+ *
+ * Les desinscrits ne partent jamais : la liste ou le segment peut les
+ * contenir, la selection les retire.
  */
 export const PLAFOND_CIBLES = 2000;
 
@@ -60,21 +64,28 @@ async function selectionner(sousRequete: string, binds: Record<string, unknown>,
    */
   const cibles = await q(`
     SELECT CONTACT_ID, EMAIL, FULL_NAME, COUNTRY, LANGUES FROM (
-      SELECT i.CONTACT_ID, v.EMAIL,
+      SELECT NVL(i.CONTACT_ID, v.PERSON_KEY) CONTACT_ID, v.EMAIL,
              TRIM(NVL(v.FIRST_NAME, ' ') || ' ' || NVL(v.LAST_NAME, ' ')) FULL_NAME,
              v.COUNTRY,
              REPLACE(REPLACE(REPLACE(NVL(JSON_SERIALIZE(i.LANGUAGES), '[]'),
                      '[', ''), ']', ''), '"', '') LANGUES,
              ROW_NUMBER() OVER (PARTITION BY LOWER(v.EMAIL)
-                                ORDER BY CASE WHEN v.PERSON_KEY LIKE 'inv:%' THEN 0 ELSE 1 END,
+                                ORDER BY CASE WHEN i.CONTACT_ID IS NOT NULL THEN 0 ELSE 1 END,
+                                         CASE WHEN v.PERSON_KEY LIKE 'inv:%' THEN 0 ELSE 1 END,
                                          v.PERSON_KEY) RANG
         FROM (${sousRequete}) v
-        JOIN (${SQL_CONTACT_PAR_EMAIL}) i ON i.CLE = LOWER(v.EMAIL)
-       WHERE v.EMAIL IS NOT NULL)
+        LEFT JOIN (${SQL_CONTACT_PAR_EMAIL}) i ON i.CLE = LOWER(v.EMAIL)
+       WHERE v.EMAIL IS NOT NULL AND NVL(v.OPT_OUT, 0) = 0)
      WHERE RANG = 1
      FETCH FIRST ${Math.min(Number(limite) || 500, PLAFOND_CIBLES)} ROWS ONLY`, binds);
-  const horsInv = await q(`SELECT COUNT(DISTINCT LOWER(v.EMAIL)) N FROM (${sousRequete}) v
-     WHERE v.EMAIL IS NOT NULL
+  /*
+   * Ceux que le routeur ne connait pas encore. Ils ne sont plus ecartes — le
+   * mailer leur ouvre une ligne de demarchage a la preparation — mais on les
+   * compte, parce que les compter c'est savoir ce qu'on est en train
+   * d'ajouter a la base de prospection.
+   */
+  const nouveaux = await q(`SELECT COUNT(DISTINCT LOWER(v.EMAIL)) N FROM (${sousRequete}) v
+     WHERE v.EMAIL IS NOT NULL AND NVL(v.OPT_OUT, 0) = 0
        AND NOT EXISTS (SELECT 1 FROM INVESTORS.CONTACTS c
                         WHERE LOWER(c.EMAIL) = LOWER(v.EMAIL))`, binds);
 
@@ -86,7 +97,7 @@ async function selectionner(sousRequete: string, binds: Record<string, unknown>,
     .join("\n");
 
   return { csv, nombre: lignes.length,
-           horsInvestisseurs: (horsInv.rows as { N: number }[])[0].N };
+           horsInvestisseurs: (nouveaux.rows as { N: number }[])[0].N };
 }
 
 /*

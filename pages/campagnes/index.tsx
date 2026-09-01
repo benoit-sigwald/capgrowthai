@@ -77,7 +77,7 @@ function Panneau({ c, surFermer, surChange }: {
               "Préparation…");
             if (j) setMsg(`${j.prepares} envoi(s) ajouté(s)`
               + (j.ignores?.deja_cible ? ` — ${j.ignores.deja_cible} déjà ciblé(s) par cette campagne` : "")
-              + (j.hors_investisseurs ? `, ${j.hors_investisseurs} hors base investisseurs écarté(s)` : "") + ".");
+              + (j.contacts_crees ? `, ${j.contacts_crees} nouveau(x) destinataire(s)` : "") + ".");
           }}>Ajouter</button>
         </div>
         <p style={{ fontSize: 11, color: "var(--ink-3)", margin: 0 }}>
