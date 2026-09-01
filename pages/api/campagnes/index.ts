@@ -65,18 +65,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Seuls les contacts investisseurs partent en campagne v1 : ce sont eux
     // qui portent langue et demarchage, et le mailer les reconnait par
     // CONTACT_ID. Les autres sources sont comptees et dites, pas oubliees.
+    // Le filtre du segment s'applique dans une sous-requete AVANT la jointure :
+    // V_PERSONNES et INVESTORS.CONTACTS portent tous deux EMAIL, et un WHERE
+    // non qualifie leverait ORA-00918.
     const cibles = await q(`
       SELECT SUBSTR(v.PERSON_KEY, 5) CONTACT_ID, v.EMAIL,
              TRIM(NVL(v.FIRST_NAME, ' ') || ' ' || NVL(v.LAST_NAME, ' ')) FULL_NAME,
              v.COUNTRY,
              REPLACE(REPLACE(REPLACE(NVL(JSON_SERIALIZE(i.LANGUAGES), '[]'),
                      '[', ''), ']', ''), '"', '') LANGUES
-        FROM V_PERSONNES v
+        FROM (SELECT * FROM V_PERSONNES WHERE ${where}) v
         JOIN INVESTORS.CONTACTS i ON 'inv:' || i.CONTACT_ID = v.PERSON_KEY
-       WHERE ${where} AND v.PERSON_KEY LIKE 'inv:%' AND v.EMAIL IS NOT NULL
+       WHERE v.PERSON_KEY LIKE 'inv:%' AND v.EMAIL IS NOT NULL
        FETCH FIRST ${Math.min(Number(limite) || 500, 2000)} ROWS ONLY`, binds);
-    const horsInv = await q(`SELECT COUNT(*) N FROM V_PERSONNES v
-       WHERE ${where} AND v.PERSON_KEY NOT LIKE 'inv:%' AND v.EMAIL IS NOT NULL`, binds);
+    const horsInv = await q(`SELECT COUNT(*) N FROM (SELECT * FROM V_PERSONNES WHERE ${where}) v
+       WHERE v.PERSON_KEY NOT LIKE 'inv:%' AND v.EMAIL IS NOT NULL`, binds);
 
     const lignes = cibles.rows as { CONTACT_ID: string; EMAIL: string; FULL_NAME: string;
       COUNTRY: string | null; LANGUES: string }[];
