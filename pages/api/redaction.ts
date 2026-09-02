@@ -143,8 +143,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
    * La langue demandee a l'ecran l'emporte sur le reglage du mandat : c'est un
    * choix pris devant le message, pas un reglage general.
    */
-  const reglages = langue && langue !== "auto"
-    ? { ...reglagesBase, LANGUE: langue } : reglagesBase;
+  /*
+   * Un message de quatre mots ne dit pas dans quelle langue on s'adresse a
+   * quelqu'un. Demander l'arbitrage au modele ne suffit pas : mesure du
+   * 2026-09-02, « ok on fonce » repondu en francais a un contact aborde en
+   * anglais, malgre la consigne. On tranche donc ici.
+   */
+  const motsRecus = (recu || "").trim().split(/\s+/).filter(Boolean).length;
+  const langueRetenue = langue && langue !== "auto" ? langue
+    : (motsRecus < 15 && langueEnvoi ? langueEnvoi : null);
+  const reglages = langueRetenue
+    ? { ...reglagesBase, LANGUE: langueRetenue } : reglagesBase;
 
   if (reponse) {
     if (!recu?.trim()) return res.status(400).json({ erreur: "message reçu vide" });
@@ -212,10 +221,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const impose = String(reglages.APPEL || "").trim();
     if (impose && impose.length <= 60 && !/\s(de|du|des|en|le|la|les)\s.*\s/.test(impose))
       return impose;
+    // La salutation suit la langue du message, sinon on ecrit « Bonjour »
+    // en tete d'une reponse anglaise.
+    const anglais = reglages.LANGUE === "en";
     const nom = (destinataire || "").trim();
-    if (!nom) return "Madame, Monsieur,";
+    if (!nom) return anglais ? "Dear Sir or Madam," : "Madame, Monsieur,";
     const prenom = nom.split(/\s+/)[0];
-    return `Bonjour ${prenom},`;
+    return anglais ? `Hello ${prenom},` : `Bonjour ${prenom},`;
   }
 
   if (reponse) {
