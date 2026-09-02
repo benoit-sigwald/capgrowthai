@@ -110,6 +110,10 @@ function Reponses() {
     const rep = await fetch(`/capgrowth/api/reponses?client=${mandat?.ID}`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ send_id: r.SEND_ID, corps: brouillon,
+        // La signature attendue : le routeur la reconnait en fin de texte pour
+        // la mettre en pied de page. Modifiee a la main, elle se rend comme le
+        // reste — jamais faux, seulement moins joli.
+        signature: signatureDe(r),
         pieces: pieces.map(({ nom, contenu }) => ({ nom, contenu })) }) });
     const j = await rep.json();
     if (!rep.ok) { setMsg(j.erreur); return; }

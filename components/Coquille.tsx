@@ -66,11 +66,16 @@ export default function Coquille({ section, children }: { section: string; child
         </select>
         {SECTIONS.map(s => lien(s, section))}
 
-        <div style={{ marginTop: 18, padding: "0 10px 4px", fontSize: 10,
-          letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-          WIP
-        </div>
-        {CHANTIER.map(s => lien(s, section))}
+        {/* Replie par defaut, sauf si l'on s'y trouve : un chantier ne
+            s'impose pas dans le menu, mais on ne perd pas de vue ou l'on est. */}
+        <details open={CHANTIER.some(s => s.id === section)} style={{ marginTop: 14 }}>
+          <summary style={{ cursor: "pointer", padding: "6px 10px", fontSize: 10,
+            letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)",
+            listStyle: "revert" }}>WIP</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+            {CHANTIER.map(s => lien(s, section))}
+          </div>
+        </details>
 
         <button className="btn" style={{ marginTop: "auto" }}
           onClick={() => signOut({ callbackUrl: "/capgrowth/connexion" })}>Se déconnecter</button>

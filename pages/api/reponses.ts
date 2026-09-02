@@ -81,8 +81,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
-    const { send_id, corps, sujet, pieces } = (req.body ?? {}) as
-      { send_id?: string; corps?: string; sujet?: string;
+    const { send_id, corps, sujet, pieces, signature } = (req.body ?? {}) as
+      { send_id?: string; corps?: string; sujet?: string; signature?: string;
         pieces?: { nom: string; contenu: string }[] };
     if (!send_id || !corps?.trim())
       return res.status(400).json({ erreur: "send_id et corps requis" });
@@ -106,8 +106,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let envoi;
     try {
-      envoi = await appelMailer("/repondre", { send_id, corps, sujet, pieces }) as
-        Record<string, string>;
+      envoi = await appelMailer("/repondre",
+        { send_id, corps, sujet, pieces, signature }) as Record<string, string>;
     } catch (e) {
       if (e instanceof RefusMailer) return res.status(422).json({ erreur: e.message });
       throw e;
