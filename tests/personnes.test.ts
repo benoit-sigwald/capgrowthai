@@ -51,3 +51,29 @@ describe("construireFiltre", () => {
     assert.ok(f.where.includes("SOURCE LIKE 'gate:%'"));
   });
 });
+
+/*
+ * Les canaux se cumulent. Cas nes de l'usage : « e-mail OU telephone » demandait
+ * deux recherches, et « joignable » doit rester lisible tel quel — des segments
+ * enregistres le portent.
+ */
+describe("construireFiltre : canaux cumules", () => {
+  const ou = (canal: string) => construireFiltre({ canal }).where;
+  it("un seul canal ne met pas de parentheses inutiles", () => {
+    assert.match(ou("telephone"), /PHONE IS NOT NULL/);
+    assert.doesNotMatch(ou("telephone"), /OR/);
+  });
+  it("deux canaux se lisent en OU", () => {
+    const w = ou("email,telephone");
+    assert.match(w, /EMAIL IS NOT NULL OR PHONE IS NOT NULL/);
+    assert.doesNotMatch(w, /LINKEDIN/);
+  });
+  it("« joignable » vaut les trois", () => {
+    const w = ou("joignable");
+    for (const c of ["EMAIL", "LINKEDIN_URL", "PHONE"]) assert.match(w, new RegExp(c));
+  });
+  it("un canal inconnu est ignore, pas injecte", () => {
+    assert.equal(ou("pigeon voyageur").includes("pigeon"), false);
+  });
+  it("sans canal, aucune contrainte", () => assert.equal(ou("").includes("IS NOT NULL"), false));
+});

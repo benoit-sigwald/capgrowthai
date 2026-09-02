@@ -63,24 +63,32 @@ export function construireFiltre(p: Record<string, string | undefined>) {
     if (p.source === "gate") w.push(`SOURCE LIKE 'gate:%'`);
     else { w.push(`SOURCE = :source`); binds.source = p.source; }
   }
-  if (p.canal === "email") w.push(`EMAIL IS NOT NULL`);
-  if (p.canal === "linkedin") w.push(`LINKEDIN_URL IS NOT NULL`);
-  if (p.canal === "telephone") w.push(`PHONE IS NOT NULL`);
   /*
-   * « Joignable » veut dire qu'il existe un moyen de parler a cette personne.
-   * Le telephone en est un — 1 023 fiches en portent un SANS adresse (mesure du
-   * 2026-09-02), et elles etaient invisibles derriere ce filtre.
+   * Les canaux se cumulent, et se lisent en OU.
+   *
+   * Un seul choix ne suffisait pas : « e-mail OU telephone » est une question
+   * courante — qui puis-je atteindre autrement que par LinkedIn — et il fallait
+   * lancer deux recherches pour y repondre. La valeur reste une chaine, avec des
+   * virgules : les segments deja enregistres, qui portent « joignable » ou
+   * « email », continuent de fonctionner sans reprise.
    */
-  if (p.canal === "joignable")
-    w.push(`(EMAIL IS NOT NULL OR LINKEDIN_URL IS NOT NULL OR PHONE IS NOT NULL)`);
-  if (p.pays) { w.push(`UPPER(COUNTRY) = UPPER(:pays)`); binds.pays = p.pays; }
-  if (p.territoire) { w.push(`TERRITOIRE = :territoire`); binds.territoire = p.territoire; }
-  if (p.secteur) { w.push(`SECTEUR = :secteur`); binds.secteur = p.secteur; }
-  if (p.optout === "1") w.push(`OPT_OUT = 1`);
+  const CANAUX: Record<string, string> = {
+    email: `EMAIL IS NOT NULL`,
+    linkedin: `LINKEDIN_URL IS NOT NULL`,
+    telephone: `PHONE IS NOT NULL`,
+  };
+  // « Joignable » veut dire qu'il existe un moyen de parler a cette personne :
+  // les trois canaux, sans en privilegier un. Le telephone en fait partie —
+  // 1 023 fiches en portent un SANS adresse (mesure du 2026-09-02).
+  const demandes = String(p.canal || "").split(",").map(c => c.trim()).filter(Boolean)
+    .flatMap(c => (c === "joignable" ? Object.keys(CANAUX) : [c]))
+    .filter(c => c in CANAUX);
+  const uniques = [...new Set(demandes)];
+  if (uniques.length) {
+    w.push(uniques.length === 1 ? CANAUX[uniques[0]]
+      : `(${uniques.map(c => CANAUX[c]).join(" OR ")})`);
+  }
 
-  // Langues : une ou plusieurs, separees par des virgules (« fr,en »).
-  // LANGUES vaut « fr,en » : on encadre de virgules des deux cotes pour que
-  // « en » ne remonte pas « ent » ni un hypothetique « ben ».
   if (p.langues) {
     const liste = p.langues.split(",").map(l => l.trim().toLowerCase())
       .filter(l => /^[a-z]{2}$/.test(l)).slice(0, 12);

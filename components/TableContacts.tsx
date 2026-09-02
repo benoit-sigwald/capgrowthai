@@ -20,6 +20,13 @@ const BASES: Record<string, string> = { investors: "Investisseurs", prospects: "
   prospects_dirigeant: "Dirigeants" };
 export const nomBase = (s: string) => BASES[s] || (s.startsWith("gate:") ? "Formulaire " + s.slice(5) : s);
 
+/* Les canaux par lesquels on peut atteindre quelqu'un. */
+const CANAUX = [
+  { id: "email", libelle: "E-mail" },
+  { id: "linkedin", libelle: "LinkedIn" },
+  { id: "telephone", libelle: "Téléphone" },
+] as const;
+
 export default function TableContacts({ onOuvrir, selection, surSelection, surPage, surFiltre }: {
   onOuvrir: (p: Personne) => void;
   selection?: Set<string>;
@@ -36,6 +43,22 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
   // « joignable » par defaut : les 70 009 fiches de registre sans canal
   // masqueraient tout le reste. Lecon mesuree sur l'outil precedent.
   const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable", langues: "" });
+  const [ouvertCanaux, setOuvertCanaux] = useState(false);
+
+  /*
+   * « joignable » reste la valeur ecrite dans les segments enregistres : on la
+   * developpe a l'affichage plutot que de la reecrire, sinon un segment cree
+   * hier changerait de sens aujourd'hui.
+   */
+  const canauxChoisis = filtre.canal.split(",").map(c => c.trim()).filter(Boolean)
+    .flatMap(c => (c === "joignable" ? CANAUX.map(x => x.id) : [c]))
+    .filter(c => CANAUX.some(x => x.id === c));
+  const basculerCanal = (id: string) => {
+    const suite = canauxChoisis.includes(id)
+      ? canauxChoisis.filter(c => c !== id) : [...canauxChoisis, id];
+    setFiltre({ ...filtre, canal: suite.length === CANAUX.length ? "joignable" : suite.join(",") });
+    setPage(0);
+  };
   const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
   const [ouvertLangues, setOuvertLangues] = useState(false);
 
@@ -71,13 +94,39 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
           <option value="prospects_dirigeant">Dirigeants</option>
           <option value="gate">Formulaires</option>
         </select>
-        <select value={filtre.canal} onChange={e => { setFiltre({ ...filtre, canal: e.target.value }); setPage(0); }}>
-          <option value="joignable">Joignables</option>
-          <option value="email">Avec e-mail</option>
-          <option value="linkedin">Avec LinkedIn</option>
-          <option value="telephone">Avec téléphone</option>
-          <option value="">Tout le référentiel</option>
-        </select>
+        {/* Les canaux se cochent, et se cumulent en OU : « qui puis-je
+            atteindre par e-mail OU par telephone » demandait deux recherches. */}
+        <div style={{ position: "relative" }}>
+          <button className="btn" onClick={() => setOuvertCanaux(o => !o)}>
+            {canauxChoisis.length === 0 ? "Tout le référentiel"
+              : canauxChoisis.length === CANAUX.length ? "Joignables"
+              : canauxChoisis.map(c => CANAUX.find(x => x.id === c)?.libelle).join(" ou ")}
+          </button>
+          {ouvertCanaux && (
+            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
+              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
+              boxShadow: "var(--shadow)", padding: 10, minWidth: 190 }}>
+              {CANAUX.map(c => (
+                <label key={c.id} style={{ display: "flex", gap: 6, alignItems: "center",
+                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
+                  <input type="checkbox" checked={canauxChoisis.includes(c.id)}
+                    onChange={() => basculerCanal(c.id)} />
+                  {c.libelle}
+                </label>))}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button className="btn" style={{ flex: 1 }}
+                  onClick={() => { setFiltre({ ...filtre, canal: "joignable" }); setPage(0); }}>
+                  Tous</button>
+                <button className="btn" style={{ flex: 1 }}
+                  onClick={() => { setFiltre({ ...filtre, canal: "" }); setPage(0); }}>
+                  Aucun</button>
+              </div>
+              <span style={{ fontSize: 10, color: "var(--ink-3)", display: "block", marginTop: 6 }}>
+                Plusieurs canaux cochés : les contacts joignables par l&apos;un
+                <b> ou</b> l&apos;autre.
+              </span>
+            </div>)}
+        </div>
         <div style={{ position: "relative" }}>
           <button className="btn" onClick={() => setOuvertLangues(o => !o)}>
             {choisies.length
