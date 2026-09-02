@@ -356,8 +356,16 @@ function Reponses() {
                     }
                   }} />
               </label>
-              <button className="btn bleu" disabled={!brouillon.trim()}
-                onClick={() => envoyer(courant)}>Envoyer</button>
+              {/* Jamais desactive : un bouton grise n'apprend rien a celui qui
+                  clique dessus. Il dit ce qui manque. */}
+              <button className="btn bleu" onClick={() => {
+                if (!brouillon.trim()) {
+                  setMsg("Rien à envoyer : écrivez votre réponse, ou cliquez sur "
+                    + "« Proposer une réponse (IA) » puis « Reprendre celle-ci ».");
+                  return;
+                }
+                envoyer(courant);
+              }}>Envoyer</button>
               <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
                 Part depuis {String(courant.EXPEDITEUR_EMAIL)} — l&apos;adresse à laquelle cette
                 personne a écrit. Objet : « Re: {String(courant.RENDERED_SUBJECT)} ».
