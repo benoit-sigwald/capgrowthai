@@ -448,8 +448,13 @@ function OptionsIa({ reglages, surChange, client, surMessage }: {
       </span>
       <input placeholder="Formule de congé imposée — ex. « Je vous prie d'agréer… » (vide : d'usage)"
         value={v.CONGE || ""} onChange={e => champ("CONGE", e.target.value)} />
-      <input placeholder="Signature — ex. « Christophe Bazaille, Innovat Property Suisse » (vide : aucune)"
+      <input placeholder="Signature — ex. « Christophe Bazaille, Innovat Property Suisse »"
         value={v.SIGNATURE || ""} onChange={e => champ("SIGNATURE", e.target.value)} />
+      <span style={{ fontSize: 10, color: "var(--ink-3)", marginTop: -6 }}>
+        Collée telle quelle en bas des réponses, et prioritaire sur la fiche de
+        l&apos;expéditeur. Laissée vide, c&apos;est la fiche qui sert
+        (Paramètres → Expéditeurs → Signature), mieux mise en page à l&apos;envoi.
+      </span>
       <textarea rows={4} value={v.CONTEXTE || ""}
         placeholder="Ce que l'IA doit savoir de la maison : activité, ce qu'on propose, ce qu'on ne promet jamais. C'est ce qui sépare une réponse juste d'une réponse plausible."
         onChange={e => champ("CONTEXTE", e.target.value)} style={{ fontSize: 12 }} />

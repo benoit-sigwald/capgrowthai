@@ -231,7 +231,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (reponse) {
-    const sig = (signature || "").trim();
+    /*
+     * Deux endroits portent une signature : le reglage du mandat, saisi dans
+     * les options, et la fiche de l'expediteur. Le reglage l'emporte — c'est
+     * celui qu'on vient d'ecrire, et l'ignorer donnait le sentiment que le
+     * champ ne servait a rien (constate le 2026-09-02).
+     *
+     * La fiche reste le repli : elle est structuree, donc mieux mise en page a
+     * l'envoi, et elle vaut pour tous les expediteurs du mandat.
+     */
+    const sig = (String(reglages.SIGNATURE || "").trim() || (signature || "").trim());
     const appel = formuleAppel();
     let textes: string[];
     try {
