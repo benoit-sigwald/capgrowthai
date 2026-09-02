@@ -19,9 +19,6 @@ const SECTIONS: Section[] = [
   { id: "modeles", libelle: "Modèles", etat: "actif" },
   { id: "statistiques", libelle: "Statistiques", etat: "actif" },
   { id: "transactionnel", libelle: "Transactionnel", etat: "actif" },
-  { id: "sms", libelle: "SMS", etat: "indisponible", motif: "Aucun crédit SMS Brevo" },
-  { id: "whatsapp", libelle: "WhatsApp", etat: "indisponible", motif: "Pas de compte WhatsApp Business" },
-  { id: "conversations", libelle: "Conversations", etat: "indisponible", motif: "Aucun widget de chat installé" },
   { id: "parametres", libelle: "Paramètres", etat: "actif" },
 ];
 
@@ -35,6 +32,11 @@ const SECTIONS: Section[] = [
 const CHANTIER: Section[] = [
   { id: "automatisation", libelle: "Automatisation", etat: "actif" },
   { id: "crm", libelle: "CRM", etat: "actif" },
+  { id: "sms", libelle: "SMS", etat: "indisponible", motif: "Aucun crédit SMS Brevo" },
+  { id: "whatsapp", libelle: "WhatsApp", etat: "indisponible",
+    motif: "Pas de compte WhatsApp Business" },
+  { id: "conversations", libelle: "Conversations", etat: "indisponible",
+    motif: "Aucun widget de chat installé" },
 ];
 
 function lien(s: Section, section: string) {

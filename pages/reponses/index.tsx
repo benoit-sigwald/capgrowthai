@@ -119,6 +119,15 @@ function Reponses() {
     if (!rep.ok) { setMsg(j.erreur); return; }
     setMsg(`Envoyé à ${j.destinataire} depuis ${j.expediteur}`
       + (j.pieces ? `, ${j.pieces} pièce(s) jointe(s).` : "."));
+    /*
+     * On bascule sur « Toutes ».
+     *
+     * Le filtre par defaut masque ce qui est traite : la reponse qu'on vient
+     * d'envoyer disparaissait donc de la liste a la seconde ou elle partait, ce
+     * qui se lit comme un envoi perdu. Elle reste desormais sous les yeux, avec
+     * son texte.
+     */
+    setFiltre("toutes");
     setBrouillon(""); setConsigne(""); setPieces([]); charger();
   }
 
@@ -191,7 +200,8 @@ function Reponses() {
                   <span style={{ fontWeight: r.REPONDU_LE ? 400 : 700, fontSize: 12,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nom}</span>
                   <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--ink-3)",
-                    whiteSpace: "nowrap" }}>{jour(r.REPLIED_AT)}</span>
+                    whiteSpace: "nowrap" }}>
+                    {r.REPONDU_LE ? "↩ " : ""}{jour(r.REPLIED_AT)}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--ink-2)", overflow: "hidden",
                   textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
