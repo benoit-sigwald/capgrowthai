@@ -28,9 +28,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              s.STATUS, s.EXPEDITEUR_EMAIL, c.NAME CAMPAGNE, c.CAMPAIGN_ID,
              v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY,
              CASE WHEN c.CLIENT_ID IS NULL THEN 1 ELSE 0 END HORS_MANDAT,
-             -- Ce qu'on a deja repondu, s'il y a lieu : sans cela on repond deux fois.
+             -- Ce qu'on a deja repondu, s'il y a lieu : sans cela on repond deux
+             -- fois. Et le TEXTE de cette reponse, sans quoi l'ecran dit qu'on a
+             -- repondu sans dire quoi — ce qui oblige a rouvrir sa messagerie.
              (SELECT MAX(i.QUAND) FROM INTERACTION i
-               WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') REPONDU_LE
+               WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') REPONDU_LE,
+             (SELECT MAX(i.RESUME) KEEP (DENSE_RANK LAST ORDER BY i.QUAND)
+                FROM INTERACTION i
+               WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') MA_REPONSE
         FROM INVESTORS.MAILING_SENDS s
         JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
         LEFT JOIN V_PERSONNES v ON LOWER(v.EMAIL) = LOWER(s.EMAIL)

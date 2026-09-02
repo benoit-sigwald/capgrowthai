@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { porteeDepuis } from "@/lib/auth";
-import { contactsAutorises } from "@/lib/portee";
+import { clientAutorise, contactsAutorises } from "@/lib/portee";
+import { DEFAUTS, reglagesDuMandat } from "./reglages-ia";
 
 /*
  * Retouche d'un gabarit par un modele de langue.
@@ -30,16 +31,63 @@ const PLAFOND = 60000;   // caracteres de gabarit acceptes
  * Deux usages, deux consignes. Repondre a quelqu'un n'est pas retoucher une
  * mise en page : la sortie est du texte simple, courte, et n'invente rien.
  */
-const CONSIGNE_REPONSE = `Tu rediges la REPONSE a un e-mail recu, en texte simple.
+const TONS: Record<string, string> = {
+  formel: "Registre soutenu, vouvoiement, distance courtoise. Aucune familiarite, "
+        + "aucune exclamation, aucune abreviation.",
+  cordial: "Registre professionnel et chaleureux, vouvoiement. Cordial sans familiarite.",
+  direct: "Registre professionnel et direct, vouvoiement. On va au fait, sans secheresse "
+        + "et sans supprimer les formules d'usage.",
+};
 
-Regles absolues :
-- Rends UNIQUEMENT le corps du message, sans objet, sans commentaire, sans balise.
-- Texte simple : pas de HTML, pas de Markdown.
-- Bref et direct : quelques phrases. Un investisseur lit vite.
-- N'invente aucun chiffre, aucun montant, aucune date, aucun engagement. Si la
-  reponse en demande un que tu n'as pas, propose un echange plutot qu'une valeur.
-- Reprends la langue du message recu.
-- Termine par une formule sobre, sans signature : l'expediteur ajoute la sienne.`;
+const LONGUEURS: Record<string, string> = {
+  bref: "Trois a cinq phrases, formules de politesse comprises.",
+  standard: "Un a deux paragraphes courts, formules de politesse comprises.",
+  detaille: "Trois paragraphes au plus, chacun sur un point distinct.",
+};
+
+/*
+ * Redaction d'une reponse.
+ *
+ * Ce que le premier jet ratait, et qui compte plus que le reste : ces messages
+ * s'adressent a des investisseurs, souvent en premiere prise de contact. Une
+ * reponse sans formule d'appel ni de conge se lit comme un message interne
+ * envoye par erreur. Les formules ne sont pas un ornement — elles sont la
+ * marque qu'on ecrit a quelqu'un.
+ */
+function consigneReponse(r: typeof DEFAUTS) {
+  const lignes = [
+    "Tu rediges la REPONSE a un e-mail professionnel recu, en texte simple.",
+    "",
+    "Registre : " + (TONS[r.TON] || TONS.formel),
+    "Longueur : " + (LONGUEURS[r.LONGUEUR] || LONGUEURS.bref),
+    "",
+    "Structure imposee, dans cet ordre :",
+    r.APPEL
+      ? `1. Formule d'appel EXACTEMENT : « ${r.APPEL} »`
+      : "1. Une formule d'appel adaptee (« Madame, », « Monsieur, », ou « Bonjour <Prenom>, » "
+        + "si le prenom est connu et le ton cordial). Jamais de message qui commence sans salutation.",
+    "2. Un remerciement bref pour le message recu, ou un accuse de reception.",
+    "3. Le fond de la reponse.",
+    r.CONGE
+      ? `4. Formule de conge EXACTEMENT : « ${r.CONGE} »`
+      : "4. Une formule de conge d'usage (« Bien cordialement, », « Je vous prie d'agreer, "
+        + "Madame, Monsieur, mes salutations distinguees, » selon le registre).",
+    r.SIGNATURE ? `5. Signature EXACTEMENT : « ${r.SIGNATURE} »`
+                : "5. Aucune signature : l'expediteur ajoutera la sienne.",
+    "",
+    "Regles absolues :",
+    "- Rends UNIQUEMENT le corps du message, sans objet, sans commentaire, sans balise.",
+    "- Texte simple : ni HTML ni Markdown.",
+    "- N'invente aucun chiffre, aucun montant, aucune date, aucun rendement, aucun engagement. "
+      + "Si la reponse en appelle un que tu n'as pas, propose un echange plutot qu'une valeur.",
+    "- Ne promets pas de document que tu ne sais pas exister.",
+    r.LANGUE && r.LANGUE !== "auto"
+      ? `- Reponds en ${r.LANGUE === "fr" ? "francais" : "anglais"}.`
+      : "- Reponds dans la langue du message recu.",
+  ];
+  if (r.CONTEXTE) lignes.push("", "Ce que tu dois savoir de la maison :", r.CONTEXTE);
+  return lignes.join("\n");
+}
 
 const CONSIGNE_SYSTEME = `Tu retouches le corps HTML d'un e-mail professionnel.
 
@@ -62,9 +110,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cle = process.env.MISTRAL_API_KEY;
   if (!cle) return res.status(503).json({ erreur: "aucune clé de modèle configurée sur le serveur" });
 
-  const { html, consigne, mode, recu, contexte } = (req.body ?? {}) as
-    { html?: string; consigne?: string; mode?: string; recu?: string; contexte?: string };
+  const { html, consigne, mode, recu, contexte, client } = (req.body ?? {}) as
+    { html?: string; consigne?: string; mode?: string; recu?: string;
+      contexte?: string; client?: number };
   const reponse = mode === "reponse";
+
+  // Les reglages du mandat font la voix : sans eux, chaque reponse aurait un
+  // ton different de la precedente.
+  const cid = Number(client || 0);
+  const reglages = reponse && cid && clientAutorise(p, cid)
+    ? await reglagesDuMandat(cid) : DEFAUTS;
 
   if (reponse) {
     if (!recu?.trim()) return res.status(400).json({ erreur: "message reçu vide" });
@@ -80,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     body: JSON.stringify({
       model: MODELE, temperature: 0.2,
       messages: reponse
-        ? [{ role: "system", content: CONSIGNE_REPONSE },
+        ? [{ role: "system", content: consigneReponse(reglages) },
            { role: "user", content:
              (contexte ? `Contexte : ${contexte}\n\n` : "")
              + `Message reçu :\n${recu}\n\n`
