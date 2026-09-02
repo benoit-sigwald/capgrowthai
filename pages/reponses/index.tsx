@@ -41,6 +41,9 @@ const initiales = (nom: string) => nom.trim().split(/\s+/).slice(0, 2)
 function Reponses() {
   const { mandat } = useMandat();
   const [rows, setRows] = useState<Reponse[]>([]);
+  // Toutes les reponses envoyees, dans l'ordre : un echange en compte parfois
+  // plusieurs, et n'en montrer qu'une fait croire que les autres sont perdues.
+  const [envoyees, setEnvoyees] = useState<Reponse[]>([]);
   const [choisi, setChoisi] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
   const [consigne, setConsigne] = useState("");
@@ -59,7 +62,7 @@ function Reponses() {
   const charger = useCallback(() => {
     if (!mandat) return;
     fetch(`/capgrowth/api/reponses?client=${mandat.ID}`).then(r => r.json())
-      .then(d => setRows(d.rows || []));
+      .then(d => { setRows(d.rows || []); setEnvoyees(d.envoyees || []); });
   }, [mandat]);
   useEffect(charger, [charger]);
   useEffect(() => {
@@ -263,14 +266,14 @@ function Reponses() {
             {String(courant.REPLY_SNIPPET ?? "(message vide)")}
           </div>
 
-          {courant.MA_REPONSE && (
-            <div style={{ borderTop: "1px solid var(--hair-soft)", paddingTop: 12,
+          {envoyees.filter(e => String(e.SEND_ID) === String(courant.SEND_ID)).map((e, i) => (
+            <div key={i} style={{ borderTop: "1px solid var(--hair-soft)", paddingTop: 12,
               marginBottom: 12 }}>
               <div style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>
-                Votre réponse, le {quand(courant.REPONDU_LE)}</div>
+                Votre réponse, le {quand(e.QUAND)}</div>
               <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap",
-                color: "var(--ink-2)" }}>{String(courant.MA_REPONSE)}</div>
-            </div>)}
+                color: "var(--ink-2)" }}>{String(e.RESUME ?? "")}</div>
+            </div>))}
 
           <div style={{ display: "grid", gap: 8, borderTop: "1px solid var(--hair-soft)",
             paddingTop: 12 }}>

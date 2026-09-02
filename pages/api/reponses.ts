@@ -57,10 +57,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              -- fois. Et le TEXTE de cette reponse, sans quoi l'ecran dit qu'on a
              -- repondu sans dire quoi — ce qui oblige a rouvrir sa messagerie.
              (SELECT MAX(i.QUAND) FROM INTERACTION i
-               WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') REPONDU_LE,
-             (SELECT MAX(i.RESUME) KEEP (DENSE_RANK LAST ORDER BY i.QUAND)
-                FROM INTERACTION i
-               WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') MA_REPONSE
+               WHERE i.SOURCE_REF LIKE 'reponse:' || s.SEND_ID || '%'
+                 AND i.SENS = 'sortant') REPONDU_LE
         FROM INVESTORS.MAILING_SENDS s
         JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
         LEFT JOIN V_PERSONNES v ON LOWER(v.EMAIL) = LOWER(s.EMAIL)
@@ -77,7 +75,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          AND (c.CLIENT_ID = :cid OR (c.CLIENT_ID IS NULL AND :admin = 1))
        ORDER BY s.REPLIED_AT DESC
        FETCH FIRST 200 ROWS ONLY`, { cid, admin: p.role === "admin" ? 1 : 0 });
-    return res.json({ rows: r.rows });
+
+    /*
+     * TOUTES les reponses envoyees, pas seulement la derniere.
+     *
+     * On repond parfois deux fois a la meme personne — pour ajouter un
+     * document, pour corriger. L'ecran montrait la premiere et taisait les
+     * suivantes ; c'est ce qui a fait croire a une reponse perdue.
+     */
+    const envoyees = await q(`
+      SELECT SUBSTR(i.SOURCE_REF, 9, 24) SEND_ID, i.QUAND, i.RESUME, i.AUTEUR
+        FROM INTERACTION i
+       WHERE i.SOURCE_REF LIKE 'reponse:%' AND i.SENS = 'sortant'
+         AND (i.CLIENT_ID = :cid OR (i.CLIENT_ID IS NULL AND :admin = 1))
+       ORDER BY i.QUAND`, { cid, admin: p.role === "admin" ? 1 : 0 });
+    return res.json({ rows: r.rows, envoyees: envoyees.rows });
   }
 
   if (req.method === "POST") {
@@ -123,14 +135,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                            FETCH FIRST 1 ROWS ONLY`, { e: l.EMAIL }))
                 .rows as { PERSON_KEY: string }[];
     if (cle.length) {
-      await q(`MERGE INTO INTERACTION i
-               USING (SELECT :ref SOURCE_REF FROM DUAL) s ON (i.SOURCE_REF = s.SOURCE_REF)
-               WHEN NOT MATCHED THEN INSERT
+      /*
+       * Une ligne PAR reponse, pas une par message.
+       *
+       * La cle etait « reponse:<envoi> » et le MERGE n'inserait que la
+       * premiere : repondre une seconde fois envoyait bien l'e-mail mais ne
+       * laissait aucune trace — ni a l'ecran, ni dans le CRM. L'horodatage
+       * rend la reference unique tout en gardant le prefixe, sur lequel se
+       * lit « a-t-on deja repondu ».
+       */
+      await q(`INSERT INTO INTERACTION
                  (PERSON_KEY, QUAND, CANAL, TYPE, SENS, RESUME, ORIGINE, SOURCE_REF,
                   AUTEUR, CLIENT_ID)
-                 VALUES (:pk, SYSTIMESTAMP, 'email', 'message', 'sortant', :resume,
-                         'capgrowth', :ref, :qui, :cid)`,
-              { ref: `reponse:${send_id}`, pk: cle[0].PERSON_KEY,
+               VALUES (:pk, SYSTIMESTAMP, 'email', 'message', 'sortant', :resume,
+                       'capgrowth', :ref, :qui, :cid)`,
+              { ref: `reponse:${send_id}:${Date.now()}`, pk: cle[0].PERSON_KEY,
                 resume: corps.trim().slice(0, 400), qui: `uid:${p.uid}`, cid });
     }
     return res.json({ ok: true, ...envoi });
