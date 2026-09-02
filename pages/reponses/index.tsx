@@ -84,6 +84,7 @@ function Reponses() {
             <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{String(r.EMAIL)}</span>
             {r.COMPANY && <span className="pill">{String(r.COMPANY)}</span>}
             <span className="pill">{String(r.CAMPAGNE)}</span>
+            {r.HORS_MANDAT === 1 && <span className="pill warn">campagne sans mandat</span>}
             <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{quand(r.REPLIED_AT)}</span>
             {r.REPONDU_LE
               ? <span className="pill ok">répondu le {quand(r.REPONDU_LE)}</span>

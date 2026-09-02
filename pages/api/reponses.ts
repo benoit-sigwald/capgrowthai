@@ -27,6 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       SELECT s.SEND_ID, s.EMAIL, s.REPLIED_AT, s.RENDERED_SUBJECT, s.REPLY_SNIPPET,
              s.STATUS, s.EXPEDITEUR_EMAIL, c.NAME CAMPAGNE, c.CAMPAIGN_ID,
              v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY,
+             CASE WHEN c.CLIENT_ID IS NULL THEN 1 ELSE 0 END HORS_MANDAT,
              -- Ce qu'on a deja repondu, s'il y a lieu : sans cela on repond deux fois.
              (SELECT MAX(i.QUAND) FROM INTERACTION i
                WHERE i.SOURCE_REF = 'reponse:' || s.SEND_ID AND i.SENS = 'sortant') REPONDU_LE
@@ -34,9 +35,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
         LEFT JOIN V_PERSONNES v ON LOWER(v.EMAIL) = LOWER(s.EMAIL)
                                AND v.PERSON_KEY LIKE 'inv:%'
-       WHERE s.REPLIED_AT IS NOT NULL AND c.CLIENT_ID = :cid
+       /*
+        * Les campagnes anterieures au multi-mandat portent un CLIENT_ID nul.
+        * Les filtrer purement et simplement faisait disparaitre cinq reponses
+        * reelles sans un mot (mesure du 2026-09-02). Un administrateur les
+        * voit, marquees ; un compte de mandat ne voit que les siennes, car
+        * rien ne dit a qui ces campagnes appartenaient.
+        */
+       WHERE s.REPLIED_AT IS NOT NULL
+         AND (c.CLIENT_ID = :cid OR (c.CLIENT_ID IS NULL AND :admin = 1))
        ORDER BY s.REPLIED_AT DESC
-       FETCH FIRST 200 ROWS ONLY`, { cid });
+       FETCH FIRST 200 ROWS ONLY`, { cid, admin: p.role === "admin" ? 1 : 0 });
     return res.json({ rows: r.rows });
   }
 
@@ -51,7 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                        JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
                        WHERE s.SEND_ID = :s`, { s: send_id });
     const l = (v.rows as { EMAIL: string; CLIENT_ID: number | null }[])[0];
-    if (!l || l.CLIENT_ID !== cid) return res.status(404).json({ erreur: "réponse inconnue" });
+    const sien = l && (l.CLIENT_ID === cid || (l.CLIENT_ID === null && p.role === "admin"));
+    if (!sien) return res.status(404).json({ erreur: "réponse inconnue" });
 
     let envoi;
     try {
