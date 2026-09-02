@@ -27,6 +27,24 @@ function manquePourSigner(r: Reponse) {
     .filter(([c]) => !String(r[c] ?? "").trim()).map(([, l]) => l);
 }
 
+/*
+ * Lire une reponse HTTP sans se faire avoir par ce qui n'est pas du JSON.
+ *
+ * Panne du 2026-09-02 : un envoi tombe pendant un redeploiement recevait une
+ * page d'erreur du proxy, `r.json()` levait, et l'ecran n'affichait RIEN — ni
+ * succes ni echec. L'utilisateur a cru a un envoi parti puis perdu, alors que
+ * rien n'etait sorti. Un echec doit se voir.
+ */
+async function lire(r: Response) {
+  const texte = await r.text();
+  try { return { ok: r.ok, data: JSON.parse(texte) as Record<string, string> }; }
+  catch {
+    return { ok: false, data: { erreur: r.ok
+      ? "réponse illisible du serveur — rien n'a été envoyé, réessayez"
+      : `service indisponible (${r.status}) — rien n'a été envoyé, réessayez` } };
+  }
+}
+
 const initiales = (nom: string) => nom.trim().split(/\s+/).slice(0, 2)
   .map(m => m[0]?.toUpperCase() ?? "").join("") || "?";
 
@@ -77,8 +95,8 @@ function Reponses() {
   async function rafraichir() {
     setMsg("Relève de la boîte de réception…");
     const r = await fetch(`/capgrowth/api/rafraichir`, { method: "POST" });
-    const j = await r.json();
-    setMsg(r.ok ? j.resume : j.erreur);
+    const { ok, data: j } = await lire(r);
+    setMsg(ok ? j.resume : j.erreur);
     charger();
   }
 
@@ -102,11 +120,12 @@ function Reponses() {
         contexte: `Objet de l'échange : « ${r.RENDERED_SUBJECT} ».`
           + (r.COMPANY ? ` Le contact travaille chez ${r.COMPANY}.` : ""),
         consigne }) });
-    const j = await rep.json();
+    const { ok, data: j } = await lire(rep);
     setIa(false);
-    if (!rep.ok) { setMsg(j.erreur); return; }
+    if (!ok) { setMsg(j.erreur); return; }
     // Trois propositions : on choisit mieux en comparant qu'en corrigeant.
-    setPropositions(j.propositions?.length ? j.propositions : [j.html]);
+    const liste = (j as unknown as { propositions?: string[] }).propositions;
+    setPropositions(liste?.length ? liste : [String(j.html ?? "")]);
     setMsg("");
   }
 
@@ -114,7 +133,9 @@ function Reponses() {
     if (!brouillon.trim()) return;
     if (!confirm(`Envoyer cette réponse à ${r.EMAIL} ?`)) return;
     setMsg("Envoi…");
-    const rep = await fetch(`/capgrowth/api/reponses?client=${mandat?.ID}`, { method: "POST",
+    let rep: Response;
+    try {
+      rep = await fetch(`/capgrowth/api/reponses?client=${mandat?.ID}`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ send_id: r.SEND_ID, corps: brouillon,
         // La signature attendue : le routeur la reconnait en fin de texte pour
@@ -122,8 +143,12 @@ function Reponses() {
         // reste — jamais faux, seulement moins joli.
         signature: signatureDe(r),
         pieces: pieces.map(({ nom, contenu }) => ({ nom, contenu })) }) });
-    const j = await rep.json();
-    if (!rep.ok) { setMsg(j.erreur); return; }
+    } catch {
+      setMsg("Envoi impossible : le serveur n'a pas répondu. Rien n'est parti, réessayez.");
+      return;
+    }
+    const { ok, data: j } = await lire(rep);
+    if (!ok) { setMsg(j.erreur); return; }
     setMsg(`Envoyé à ${j.destinataire} depuis ${j.expediteur}`
       + (j.pieces ? `, ${j.pieces} pièce(s) jointe(s).` : "."));
     /*
