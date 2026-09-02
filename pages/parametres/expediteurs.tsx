@@ -13,6 +13,8 @@ function Expediteurs() {
   const [lignes, setLignes] = useState<Ligne[]>([]);
   const [chauffe, setChauffe] = useState<Record<string, Record<string, unknown>>>({});
   const [msg, setMsg] = useState("");
+  // L'expediteur dont on edite la signature, ou rien.
+  const [signature, setSignature] = useState<Record<string, string | number | null> | null>(null);
 
   const charger = useCallback(() => {
     if (!mandat) return;
@@ -73,10 +75,45 @@ function Expediteurs() {
     {rows.map(x => (
       <div key={x["ID"]} style={{ padding: "10px 0", borderBottom: "1px solid var(--hair-soft)", fontSize: 12 }}>
         <b>{x["EMAIL"]}</b> · {x["NOM_AFFICHAGE"]}
+        {!x["SOCIETE"] && <span className="pill warn" style={{ marginLeft: 6 }}>signature incomplète</span>}
         <span className={`pill ${x["SPF_OK"] ? "ok" : "crit"}`} style={{ marginLeft: 8 }}>SPF</span>
         <span className={`pill ${x["DKIM_OK"] ? "ok" : "crit"}`} style={{ marginLeft: 4 }}>DKIM</span>
         <button className="btn" style={{ marginLeft: 10 }} onClick={() => reverifier(Number(x["ID"]))}>Revérifier</button>
         <button className="btn" style={{ marginLeft: 6 }} onClick={() => voirChauffage(Number(x["ID"]))}>Chauffage</button>
+        <button className="btn" style={{ marginLeft: 6 }}
+          onClick={() => setSignature(signature?.ID === x["ID"] ? null : { ...x })}>
+          {signature?.ID === x["ID"] ? "Fermer" : "Signature"}</button>
+        {signature?.ID === x["ID"] && (
+          <div style={{ display: "grid", gap: 6, marginTop: 10, maxWidth: 520 }}>
+            <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+              Ce bloc est ajouté mot pour mot au bas des réponses. Il n&apos;est jamais rédigé
+              par l&apos;IA : une signature porte un téléphone et une adresse, et un modèle qui
+              en invente un ne se fait pas relire.
+            </span>
+            {([["PRENOM", "Prénom"], ["NOM", "Nom"], ["FONCTION", "Fonction"],
+               ["SOCIETE", "Société"], ["ADRESSE", "Adresse"], ["TELEPHONE", "Téléphone"],
+               ["SITE", "Site web"]] as const).map(([cle, libelle]) => (
+              <input key={cle} placeholder={libelle} value={String(signature[cle] ?? "")}
+                onChange={e => setSignature({ ...signature, [cle]: e.target.value })} />))}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button className="btn bleu" onClick={async () => {
+                const r = await fetch(`/capgrowth/api/expediteurs?client=${mandat?.ID}`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: signature.ID, prenom: signature.PRENOM,
+                    nom: signature.NOM, fonction: signature.FONCTION, societe: signature.SOCIETE,
+                    adresse: signature.ADRESSE, telephone: signature.TELEPHONE,
+                    site: signature.SITE }) });
+                const j = await r.json();
+                setMsg(r.ok ? "Signature enregistrée." : j.erreur);
+                if (r.ok) { setSignature(null); charger(); }
+              }}>Enregistrer</button>
+              <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                Aperçu : {[signature.PRENOM, signature.NOM].filter(Boolean).join(" ")}
+                {signature.SOCIETE ? ` · ${signature.SOCIETE}` : ""}
+                {signature.TELEPHONE ? ` · ${signature.TELEPHONE}` : ""}
+              </span>
+            </div>
+          </div>)}
         {chauffe[String(x["ID"])] && (
           <div style={{ color: "var(--ink-2)", marginTop: 4 }}>
             Domaine {String(chauffe[String(x["ID"])]["domaine"])} — jour d&apos;envoi n°{Number(chauffe[String(x["ID"])]["journees"]) + 1},

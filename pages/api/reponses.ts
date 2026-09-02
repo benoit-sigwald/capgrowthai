@@ -15,6 +15,26 @@ import { appelMailer, RefusMailer } from "@/lib/mailer";
  * L'envoi passe par le routeur, sous l'adresse de la CAMPAGNE : le contact a
  * ecrit a quelqu'un, la reponse vient de la meme personne.
  */
+/*
+ * Bloc de signature d'un expediteur.
+ *
+ * Compose ici, ligne a ligne, et jamais par le modele : une signature contient
+ * un telephone et une adresse. Un modele qui « redige une signature » invente
+ * un chiffre plausible, et personne ne le verifie avant l'envoi.
+ */
+export function signatureDe(e: Record<string, string | null>) {
+  const nom = [e.PRENOM, e.NOM].filter(Boolean).join(" ").trim() || e.NOM_AFFICHAGE || "";
+  return [
+    nom,
+    e.FONCTION,
+    e.SOCIETE,
+    e.ADRESSE,
+    e.EMAIL,
+    e.TELEPHONE,
+    e.SITE,
+  ].map(l => (l || "").trim()).filter(Boolean).join("\n");
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const p = await porteeDepuis(req, res);
   if (!p) return res.status(401).json({ erreur: "non connecte" });
@@ -26,7 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const r = await q(`
       SELECT s.SEND_ID, s.EMAIL, s.REPLIED_AT, s.RENDERED_SUBJECT, s.REPLY_SNIPPET,
              s.STATUS, s.EXPEDITEUR_EMAIL, c.NAME CAMPAGNE, c.CAMPAIGN_ID,
-             v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY,
+             v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY, v.LANGUES,
+             x.PRENOM, x.NOM, x.FONCTION, x.SOCIETE, x.ADRESSE, x.TELEPHONE, x.SITE,
+             x.NOM_AFFICHAGE,
              CASE WHEN c.CLIENT_ID IS NULL THEN 1 ELSE 0 END HORS_MANDAT,
              -- Ce qu'on a deja repondu, s'il y a lieu : sans cela on repond deux
              -- fois. Et le TEXTE de cette reponse, sans quoi l'ecran dit qu'on a
@@ -40,6 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
         LEFT JOIN V_PERSONNES v ON LOWER(v.EMAIL) = LOWER(s.EMAIL)
                                AND v.PERSON_KEY LIKE 'inv:%'
+        LEFT JOIN EXPEDITEUR x ON LOWER(x.EMAIL) = LOWER(s.EXPEDITEUR_EMAIL)
        /*
         * Les campagnes anterieures au multi-mandat portent un CLIENT_ID nul.
         * Les filtrer purement et simplement faisait disparaitre cinq reponses
@@ -55,10 +78,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
-    const { send_id, corps, sujet } = (req.body ?? {}) as
-      { send_id?: string; corps?: string; sujet?: string };
+    const { send_id, corps, sujet, pieces } = (req.body ?? {}) as
+      { send_id?: string; corps?: string; sujet?: string;
+        pieces?: { nom: string; contenu: string }[] };
     if (!send_id || !corps?.trim())
       return res.status(400).json({ erreur: "send_id et corps requis" });
+
+    /*
+     * Le poids des pieces jointes se verifie ICI aussi, avant de traverser le
+     * reseau interne : Next refuse par defaut un corps de plus de 1 Mo, et un
+     * refus a ce niveau-la se lit « erreur serveur » sans autre explication.
+     */
+    const poids = (pieces || []).reduce((n, p) => n + (p.contenu?.length || 0) * 0.75, 0);
+    if (poids > 9_500_000)
+      return res.status(413).json({ erreur: "pièces jointes trop lourdes : 9,5 Mo au total au plus" });
 
     // L'envoi doit appartenir a ce mandat : un send_id se devine.
     const v = await q(`SELECT s.EMAIL, c.CLIENT_ID FROM INVESTORS.MAILING_SENDS s
@@ -70,7 +103,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let envoi;
     try {
-      envoi = await appelMailer("/repondre", { send_id, corps, sujet }) as
+      envoi = await appelMailer("/repondre", { send_id, corps, sujet, pieces }) as
         Record<string, string>;
     } catch (e) {
       if (e instanceof RefusMailer) return res.status(422).json({ erreur: e.message });

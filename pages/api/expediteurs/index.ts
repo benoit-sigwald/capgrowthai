@@ -21,7 +21,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const filtreProprio = modeExp === "utilisateur" && p.role !== "admin"
       ? `AND (UTILISATEUR_ID = :u OR UTILISATEUR_ID IS NULL)` : ``;
     const r = await q(`SELECT ID, EMAIL, NOM_AFFICHAGE, DOMAINE, UTILISATEUR_ID,
-                              BREVO_ID, SPF_OK, DKIM_OK, VERIFIE_LE
+                              BREVO_ID, SPF_OK, DKIM_OK, VERIFIE_LE,
+                              PRENOM, NOM, FONCTION, SOCIETE, ADRESSE, TELEPHONE, SITE
                          FROM EXPEDITEUR WHERE CLIENT_ID = :cid ${filtreProprio}
                         ORDER BY EMAIL`,
                       filtreProprio ? { cid, u: p.uid } : { cid });
@@ -64,5 +65,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.json({ ok: true, id: id[0].ID, verdict });
   }
 
-  res.setHeader("Allow", ["GET", "POST"]); res.status(405).end();
+  if (req.method === "PATCH") {
+    /*
+     * La signature d'un expediteur. Elle n'est pas un ornement : c'est ce que
+     * le destinataire utilise pour rappeler ou repondre. Elle vit sur
+     * l'expediteur et non sur le mandat — deux collaborateurs partagent
+     * l'adresse postale, pas le telephone direct.
+     */
+    const v = (req.body ?? {}) as Record<string, string | number | undefined>;
+    const id = Number(v.id);
+    if (!id) return res.status(400).json({ erreur: "id requis" });
+    const r = await q(`UPDATE EXPEDITEUR SET PRENOM = :pr, NOM = :nom, FONCTION = :fn,
+                              SOCIETE = :soc, ADRESSE = :adr, TELEPHONE = :tel, SITE = :site,
+                              NOM_AFFICHAGE = NVL(:aff, NOM_AFFICHAGE)
+                        WHERE ID = :id AND CLIENT_ID = :cid`,
+                      { id, cid,
+                        pr: (v.prenom as string)?.slice(0, 80) || null,
+                        nom: (v.nom as string)?.slice(0, 80) || null,
+                        fn: (v.fonction as string)?.slice(0, 120) || null,
+                        soc: (v.societe as string)?.slice(0, 160) || null,
+                        adr: (v.adresse as string)?.slice(0, 300) || null,
+                        tel: (v.telephone as string)?.slice(0, 40) || null,
+                        site: (v.site as string)?.slice(0, 200) || null,
+                        aff: [v.prenom, v.nom].filter(Boolean).join(" ").trim() || null });
+    if (!r.rowsAffected) return res.status(404).json({ erreur: "expediteur inconnu sur ce mandat" });
+    return res.json({ ok: true });
+  }
+
+  res.setHeader("Allow", ["GET", "POST", "PATCH"]); res.status(405).end();
 }

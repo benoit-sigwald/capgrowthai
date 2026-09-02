@@ -9,6 +9,24 @@ const quand = (v: string | number | null) =>
 const jour = (v: string | number | null) =>
   v ? new Date(String(v)).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) : "";
 
+/*
+ * La signature, composee cote ecran comme cote serveur : ce qui est rempli,
+ * dans cet ordre, et rien d'autre. Une ligne vide ne doit jamais devenir une
+ * ligne vide dans un e-mail.
+ */
+function signatureDe(r: Reponse) {
+  const nom = [r.PRENOM, r.NOM].filter(Boolean).join(" ").trim()
+    || String(r.NOM_AFFICHAGE ?? "");
+  return [nom, r.FONCTION, r.SOCIETE, r.ADRESSE, r.EXPEDITEUR_EMAIL, r.TELEPHONE, r.SITE]
+    .map(l => String(l ?? "").trim()).filter(Boolean).join("\n");
+}
+
+/* Ce qui manque pour signer : on le dit, on ne signe pas a moitie en silence. */
+function manquePourSigner(r: Reponse) {
+  return ([["SOCIETE", "société"], ["ADRESSE", "adresse"], ["TELEPHONE", "téléphone"]] as const)
+    .filter(([c]) => !String(r[c] ?? "").trim()).map(([, l]) => l);
+}
+
 const initiales = (nom: string) => nom.trim().split(/\s+/).slice(0, 2)
   .map(m => m[0]?.toUpperCase() ?? "").join("") || "?";
 
@@ -33,6 +51,8 @@ function Reponses() {
   const [filtre, setFiltre] = useState<"a_traiter" | "toutes">("a_traiter");
   const [options, setOptions] = useState(false);
   const [reglages, setReglages] = useState<Record<string, string>>({});
+  const [propositions, setPropositions] = useState<string[] | null>(null);
+  const [pieces, setPieces] = useState<{ nom: string; contenu: string; poids: number }[]>([]);
 
   const charger = useCallback(() => {
     if (!mandat) return;
@@ -63,15 +83,23 @@ function Reponses() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "reponse", client: mandat?.ID,
         recu: String(r.REPLY_SNIPPET ?? ""),
-        contexte: `Campagne « ${r.CAMPAGNE} », objet « ${r.RENDERED_SUBJECT} ».`
-          + ` Contact : ${[r.FIRST_NAME, r.LAST_NAME].filter(Boolean).join(" ") || r.EMAIL}`
-          + (r.COMPANY ? `, ${r.COMPANY}` : ""),
+        destinataire: [r.FIRST_NAME, r.LAST_NAME].filter(Boolean).join(" ") || String(r.EMAIL),
+        signature: signatureDe(r),
+        /*
+         * Pas le nom INTERNE de la campagne : « 02.09 test nouvelle fiche » est
+         * une etiquette de travail, et le modele la reprenait telle quelle dans
+         * un message adresse au client. Seul l'objet de l'e-mail auquel la
+         * personne repond a un sens pour elle.
+         */
+        contexte: `Objet de l'échange : « ${r.RENDERED_SUBJECT} ».`
+          + (r.COMPANY ? ` Le contact travaille chez ${r.COMPANY}.` : ""),
         consigne }) });
     const j = await rep.json();
     setIa(false);
     if (!rep.ok) { setMsg(j.erreur); return; }
-    setBrouillon(j.html);
-    setMsg("Proposition affichée — relisez et corrigez, rien n'est parti.");
+    // Trois propositions : on choisit mieux en comparant qu'en corrigeant.
+    setPropositions(j.propositions?.length ? j.propositions : [j.html]);
+    setMsg("");
   }
 
   async function envoyer(r: Reponse) {
@@ -80,11 +108,13 @@ function Reponses() {
     setMsg("Envoi…");
     const rep = await fetch(`/capgrowth/api/reponses?client=${mandat?.ID}`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ send_id: r.SEND_ID, corps: brouillon }) });
+      body: JSON.stringify({ send_id: r.SEND_ID, corps: brouillon,
+        pieces: pieces.map(({ nom, contenu }) => ({ nom, contenu })) }) });
     const j = await rep.json();
     if (!rep.ok) { setMsg(j.erreur); return; }
-    setMsg(`Envoyé à ${j.destinataire} depuis ${j.expediteur}.`);
-    setBrouillon(""); setConsigne(""); charger();
+    setMsg(`Envoyé à ${j.destinataire} depuis ${j.expediteur}`
+      + (j.pieces ? `, ${j.pieces} pièce(s) jointe(s).` : "."));
+    setBrouillon(""); setConsigne(""); setPieces([]); charger();
   }
 
   return (<>
@@ -102,6 +132,35 @@ function Reponses() {
 
     {options && <OptionsIa reglages={reglages} surChange={setReglages}
       client={mandat?.ID} surMessage={setMsg} />}
+
+    {propositions && (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.25)", zIndex: 60,
+        display: "grid", placeItems: "center" }} onClick={() => setPropositions(null)}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "var(--card)",
+          borderRadius: "var(--r)", padding: 20, width: "min(980px, 94vw)",
+          maxHeight: "88vh", overflowY: "auto", display: "grid", gap: 12 }}>
+          <b style={{ fontSize: 13 }}>Trois propositions — choisissez celle à reprendre</b>
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            Elles répondent au même message, avec un angle différent. Rien n&apos;est envoyé :
+            la proposition retenue vient dans la zone de saisie, où vous la corrigez.
+          </span>
+          {propositions.map((t, i) => (
+            <div key={i} style={{ border: "1px solid var(--hair)", borderRadius: 10,
+              padding: 12, display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                {["Au plus court", "Développée", "Plus chaleureuse"][i] || `Proposition ${i + 1}`}
+              </div>
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 12.5, lineHeight: 1.5 }}>{t}</div>
+              <div>
+                <button className="btn bleu" onClick={() => {
+                  setBrouillon(t); setPropositions(null);
+                  setMsg("Proposition reprise — relisez et corrigez, rien n'est parti.");
+                }}>Reprendre celle-ci</button>
+              </div>
+            </div>))}
+          <div><button className="btn" onClick={() => setPropositions(null)}>Fermer</button></div>
+        </div>
+      </div>)}
 
     <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 320px) 1fr",
       gap: 0, border: "1px solid var(--hair-soft)", borderRadius: "var(--r)",
@@ -192,10 +251,47 @@ function Reponses() {
               <button className="btn" disabled={ia} onClick={() => proposer(courant)}>
                 {ia ? "…" : "Proposer une réponse (IA)"}</button>
             </div>
+            {manquePourSigner(courant).length > 0 && (
+              <span className="pill warn">
+                Signature incomplète : {manquePourSigner(courant).join(", ")} manque(nt) sur
+                l&apos;expéditeur. Paramètres → Expéditeurs pour les renseigner.
+              </span>)}
             <textarea rows={8} value={brouillon} placeholder="Votre réponse…"
               onChange={e => setBrouillon(e.target.value)}
               style={{ width: "100%", fontSize: 13 }} />
+            {pieces.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {pieces.map((p, i) => (
+                  <span key={i} className="pill">
+                    {p.nom} · {Math.round(p.poids / 1024)} Ko{" "}
+                    <a style={{ cursor: "pointer", color: "var(--crit)" }}
+                      onClick={() => setPieces(l => l.filter((_, j) => j !== i))}>retirer</a>
+                  </span>))}
+              </div>)}
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <label className="btn" style={{ cursor: "pointer" }}>
+                Joindre un document
+                <input type="file" multiple style={{ display: "none" }}
+                  onChange={async e => {
+                    const fichiers = [...(e.target.files || [])];
+                    e.target.value = "";
+                    for (const f of fichiers) {
+                      // 9,5 Mo au total : c'est le plafond du routeur, verifie
+                      // ici pour ne pas lire 40 Mo avant de se faire refuser.
+                      const deja = pieces.reduce((n, p) => n + p.poids, 0);
+                      if (deja + f.size > 9_500_000) {
+                        setMsg(`« ${f.name} » dépasse le total de 9,5 Mo autorisé.`);
+                        continue;
+                      }
+                      const b64 = await new Promise<string>(res => {
+                        const l = new FileReader();
+                        l.onload = () => res(String(l.result).split(",")[1] || "");
+                        l.readAsDataURL(f);
+                      });
+                      setPieces(p => [...p, { nom: f.name, contenu: b64, poids: f.size }]);
+                    }
+                  }} />
+              </label>
               <button className="btn bleu" disabled={!brouillon.trim()}
                 onClick={() => envoyer(courant)}>Envoyer</button>
               <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
@@ -277,7 +373,7 @@ export default function PageReponses() {
   return (
     <MandatFournisseur>
       <Coquille section="reponses">
-        <h1 style={{ fontSize: 22, marginBottom: 6 }}>Réponses</h1>
+        <h1 style={{ fontSize: 22, marginBottom: 6 }}>E-mails</h1>
         <p style={{ color: "var(--ink-3)", marginBottom: 14 }}>
           Une ouverture se compte, une réponse s&apos;honore. Ce qui part d&apos;ici s&apos;envoie
           sous l&apos;adresse de la campagne — celle à laquelle la personne a écrit — et laisse
