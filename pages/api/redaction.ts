@@ -122,9 +122,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cle = process.env.MISTRAL_API_KEY;
   if (!cle) return res.status(503).json({ erreur: "aucune clé de modèle configurée sur le serveur" });
 
-  const { html, consigne, mode, recu, contexte, client, destinataire, signature } =
+  const { html, consigne, mode, recu, contexte, client, destinataire, signature, envoye } =
     (req.body ?? {}) as { html?: string; consigne?: string; mode?: string; recu?: string;
-      contexte?: string; client?: number; destinataire?: string; signature?: string };
+      contexte?: string; client?: number; destinataire?: string; signature?: string;
+      envoye?: string };
   const reponse = mode === "reponse";
 
   // Les reglages du mandat font la voix : sans eux, chaque reponse aurait un
@@ -189,7 +190,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
    * si elle existe, « Madame, Monsieur, » a defaut — jamais une deduction.
    */
   function formuleAppel() {
-    if (reglages.APPEL) return String(reglages.APPEL).trim();
+    /*
+     * Le reglage « formule d'appel » est colle mot pour mot. Un utilisateur y
+     * a ecrit une consigne — « choisir en fonction de l'email original » — qui
+     * s'est retrouvee en tete du message envoye. Une formule d'appel est
+     * courte et se termine par une virgule ; au-dela, c'est une intention, pas
+     * une formule, et on l'ignore plutot que de la publier.
+     */
+    const impose = String(reglages.APPEL || "").trim();
+    if (impose && impose.length <= 60 && !/\s(de|du|des|en|le|la|les)\s.*\s/.test(impose))
+      return impose;
     const nom = (destinataire || "").trim();
     if (!nom) return "Madame, Monsieur,";
     const prenom = nom.split(/\s+/)[0];

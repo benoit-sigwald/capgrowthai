@@ -46,6 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const r = await q(`
       SELECT s.SEND_ID, s.EMAIL, s.REPLIED_AT, s.RENDERED_SUBJECT, s.REPLY_SNIPPET,
              s.STATUS, s.EXPEDITEUR_EMAIL, c.NAME CAMPAGNE, c.CAMPAIGN_ID,
+             -- Le message d'origine : sans lui, on repond a une reponse sans
+             -- savoir a quoi elle repond, et le modele non plus.
+             s.SENT_AT, s.RENDERED_BODY MESSAGE_ENVOYE,
              v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY, v.LANGUES,
              x.PRENOM, x.NOM, x.FONCTION, x.SOCIETE, x.ADRESSE, x.TELEPHONE, x.SITE,
              x.NOM_AFFICHAGE,

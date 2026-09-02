@@ -85,6 +85,7 @@ function Reponses() {
         recu: String(r.REPLY_SNIPPET ?? ""),
         destinataire: [r.FIRST_NAME, r.LAST_NAME].filter(Boolean).join(" ") || String(r.EMAIL),
         signature: signatureDe(r),
+        envoye: String(r.MESSAGE_ENVOYE ?? ""),
         /*
          * Pas le nom INTERNE de la campagne : « 02.09 test nouvelle fiche » est
          * une etiquette de travail, et le modele la reprenait telle quelle dans
@@ -228,6 +229,17 @@ function Reponses() {
               : <span className="pill warn">sans réponse</span>}
           </div>
 
+          {courant.MESSAGE_ENVOYE && (
+            <details style={{ margin: "0 0 14px", padding: "10px 12px",
+              background: "var(--bg-alt)", borderRadius: 8 }}>
+              <summary style={{ cursor: "pointer", fontSize: 11, color: "var(--ink-3)" }}>
+                Message envoyé le {quand(courant.SENT_AT)} — {String(courant.CAMPAGNE)}
+              </summary>
+              <div style={{ fontSize: 12.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
+                marginTop: 8, color: "var(--ink-2)" }}>
+                {String(courant.MESSAGE_ENVOYE)}</div>
+            </details>)}
+
           <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap",
             padding: "4px 0 14px" }}>
             {String(courant.REPLY_SNIPPET ?? "(message vide)")}
@@ -343,8 +355,14 @@ function OptionsIa({ reglages, surChange, client, surMessage }: {
             <option value="fr">français</option><option value="en">anglais</option>
           </select></label>
       </div>
-      <input placeholder="Formule d'appel imposée — ex. « Madame, Monsieur, » (vide : choisie selon le cas)"
+      <input placeholder="Formule d'appel imposée — ex. « Madame, Monsieur, » (vide : « Bonjour Prénom, »)"
         value={v.APPEL || ""} onChange={e => champ("APPEL", e.target.value)} />
+      <span style={{ fontSize: 10, color: "var(--ink-3)", marginTop: -6 }}>
+        Ce champ est collé <b>mot pour mot</b> en tête du message : écrivez une formule,
+        pas une consigne. Laissé vide, l&apos;appel reprend le prénom du contact.
+        Pour donner une instruction à l&apos;IA, utilisez le champ ci-dessous ou la
+        consigne à côté du bouton.
+      </span>
       <input placeholder="Formule de congé imposée — ex. « Je vous prie d'agréer… » (vide : d'usage)"
         value={v.CONGE || ""} onChange={e => champ("CONGE", e.target.value)} />
       <input placeholder="Signature — ex. « Christophe Bazaille, Innovat Property Suisse » (vide : aucune)"
