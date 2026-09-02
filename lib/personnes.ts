@@ -65,7 +65,14 @@ export function construireFiltre(p: Record<string, string | undefined>) {
   }
   if (p.canal === "email") w.push(`EMAIL IS NOT NULL`);
   if (p.canal === "linkedin") w.push(`LINKEDIN_URL IS NOT NULL`);
-  if (p.canal === "joignable") w.push(`(EMAIL IS NOT NULL OR LINKEDIN_URL IS NOT NULL)`);
+  if (p.canal === "telephone") w.push(`PHONE IS NOT NULL`);
+  /*
+   * « Joignable » veut dire qu'il existe un moyen de parler a cette personne.
+   * Le telephone en est un — 1 023 fiches en portent un SANS adresse (mesure du
+   * 2026-09-02), et elles etaient invisibles derriere ce filtre.
+   */
+  if (p.canal === "joignable")
+    w.push(`(EMAIL IS NOT NULL OR LINKEDIN_URL IS NOT NULL OR PHONE IS NOT NULL)`);
   if (p.pays) { w.push(`UPPER(COUNTRY) = UPPER(:pays)`); binds.pays = p.pays; }
   if (p.territoire) { w.push(`TERRITOIRE = :territoire`); binds.territoire = p.territoire; }
   if (p.secteur) { w.push(`SECTEUR = :secteur`); binds.secteur = p.secteur; }

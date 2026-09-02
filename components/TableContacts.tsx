@@ -75,6 +75,7 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
           <option value="joignable">Joignables</option>
           <option value="email">Avec e-mail</option>
           <option value="linkedin">Avec LinkedIn</option>
+          <option value="telephone">Avec téléphone</option>
           <option value="">Tout le référentiel</option>
         </select>
         <div style={{ position: "relative" }}>
