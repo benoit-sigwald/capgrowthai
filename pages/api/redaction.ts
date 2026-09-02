@@ -26,6 +26,21 @@ import { contactsAutorises } from "@/lib/portee";
 const MODELE = process.env.MISTRAL_MODELE || "mistral-small-latest";
 const PLAFOND = 60000;   // caracteres de gabarit acceptes
 
+/*
+ * Deux usages, deux consignes. Repondre a quelqu'un n'est pas retoucher une
+ * mise en page : la sortie est du texte simple, courte, et n'invente rien.
+ */
+const CONSIGNE_REPONSE = `Tu rediges la REPONSE a un e-mail recu, en texte simple.
+
+Regles absolues :
+- Rends UNIQUEMENT le corps du message, sans objet, sans commentaire, sans balise.
+- Texte simple : pas de HTML, pas de Markdown.
+- Bref et direct : quelques phrases. Un investisseur lit vite.
+- N'invente aucun chiffre, aucun montant, aucune date, aucun engagement. Si la
+  reponse en demande un que tu n'as pas, propose un echange plutot qu'une valeur.
+- Reprends la langue du message recu.
+- Termine par une formule sobre, sans signature : l'expediteur ajoute la sienne.`;
+
 const CONSIGNE_SYSTEME = `Tu retouches le corps HTML d'un e-mail professionnel.
 
 Regles absolues :
@@ -47,20 +62,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cle = process.env.MISTRAL_API_KEY;
   if (!cle) return res.status(503).json({ erreur: "aucune clé de modèle configurée sur le serveur" });
 
-  const { html, consigne } = (req.body ?? {}) as { html?: string; consigne?: string };
-  if (!consigne?.trim()) return res.status(400).json({ erreur: "dites ce qu'il faut changer" });
-  if (!html?.trim()) return res.status(400).json({ erreur: "gabarit vide" });
-  if (html.length > PLAFOND) return res.status(413).json({ erreur: "gabarit trop long" });
+  const { html, consigne, mode, recu, contexte } = (req.body ?? {}) as
+    { html?: string; consigne?: string; mode?: string; recu?: string; contexte?: string };
+  const reponse = mode === "reponse";
+
+  if (reponse) {
+    if (!recu?.trim()) return res.status(400).json({ erreur: "message reçu vide" });
+  } else {
+    if (!consigne?.trim()) return res.status(400).json({ erreur: "dites ce qu'il faut changer" });
+    if (!html?.trim()) return res.status(400).json({ erreur: "gabarit vide" });
+    if (html.length > PLAFOND) return res.status(413).json({ erreur: "gabarit trop long" });
+  }
 
   const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${cle}` },
     body: JSON.stringify({
       model: MODELE, temperature: 0.2,
-      messages: [
-        { role: "system", content: CONSIGNE_SYSTEME },
-        { role: "user", content: `Demande : ${consigne.trim()}\n\nGabarit actuel :\n${html}` },
-      ],
+      messages: reponse
+        ? [{ role: "system", content: CONSIGNE_REPONSE },
+           { role: "user", content:
+             (contexte ? `Contexte : ${contexte}\n\n` : "")
+             + `Message reçu :\n${recu}\n\n`
+             + (consigne?.trim() ? `Ce que je veux répondre : ${consigne.trim()}`
+                                 : "Rédige une réponse appropriée.") }]
+        : [{ role: "system", content: CONSIGNE_SYSTEME },
+           { role: "user", content:
+             `Demande : ${(consigne ?? "").trim()}\n\nGabarit actuel :\n${html}` }],
     }),
   });
   if (!r.ok) {
@@ -78,8 +106,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
    * apres. Une disparition n'est pas une retouche, c'est une regression que
    * personne ne verrait avant l'envoi.
    */
+  if (reponse) return res.json({ ok: true, html: sortie, perdues: [], avertissement: null });
+
   const variables = (t: string) => [...t.matchAll(/\{\{([a-z_]+)\}\}/g)].map(m => m[1]);
-  const avant = new Set(variables(html));
+  const avant = new Set(variables(html!));
   const apres = new Set(variables(sortie));
   const perdues = [...avant].filter(v => !apres.has(v));
 

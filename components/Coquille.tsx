@@ -12,6 +12,7 @@ const SECTIONS: { id: string; libelle: string; etat: "actif" | "a_venir" | "indi
   { id: "", libelle: "Tableau de bord", etat: "actif" },
   { id: "contacts", libelle: "Contacts", etat: "actif" },
   { id: "campagnes", libelle: "Campagnes", etat: "actif" },
+  { id: "reponses", libelle: "Réponses", etat: "actif" },
   { id: "automatisation", libelle: "Automatisation", etat: "actif" },
   { id: "modeles", libelle: "Modèles", etat: "actif" },
   { id: "statistiques", libelle: "Statistiques", etat: "actif" },

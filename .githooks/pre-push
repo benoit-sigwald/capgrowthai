@@ -15,6 +15,12 @@
 # Les mots de passe vivent dans .recette.env, ignore par git. Absents, le push
 # est REFUSE : une recette sautee en silence donne une confiance qu'on n'a pas.
 # Pour passer outre en connaissance de cause : git push --no-verify
+#
+# UN CAS LEGITIME de --no-verify, et un seul : le push qui INTRODUIT une route.
+# Les deux dernieres recettes interrogent la production ; une route qui n'y est
+# pas encore repond 404, et le crochet bloquerait le push qui la deploierait.
+# Dans ce cas : pousser sans crochet, deployer, puis relancer les trois
+# recettes a la main. Elles doivent passer AVANT qu'on passe a autre chose.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 

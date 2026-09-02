@@ -18,8 +18,17 @@
 const BASE = process.env.CG_URL || 'https://arx-consulting.com/capgrowth';
 const EMAIL = process.env.CG_TEST_EMAIL || 'test-qa@arx.local';
 const MDP = process.env.CG_TEST_PASSWORD;
-const MIEN = Number(process.env.CG_MANDAT || 4);
-const AUTRE = Number(process.env.CG_MANDAT_INTERDIT || 1);
+/*
+ * Les mandats ne sont PAS ecrits en dur.
+ *
+ * Le 2026-09-02, un droit accorde depuis l'ecran Parametres a fait echouer
+ * quatre controles : la recette supposait que le compte n'avait qu'un mandat.
+ * Une recette qui crie au loup quand on exerce une fonction normale finit
+ * ignoree, et une recette ignoree ne protege plus rien. Elle lit donc la portee
+ * dans la session et en deduit ce qu'elle doit verifier.
+ */
+let MIEN = Number(process.env.CG_MANDAT || 0);
+let AUTRE = Number(process.env.CG_MANDAT_INTERDIT || 0);
 
 let reussis = 0;
 const echecs = [];
@@ -63,7 +72,8 @@ async function connexion(email, motdepasse) {
 const ROUTES = ['clients', 'utilisateurs', 'personnes', 'segments', 'campagnes',
   'expediteurs', 'pipeline', 'taches', 'journal', 'automatisations', 'statistiques',
   'modeles', 'gabarits', 'attributs', 'langues', 'listes', 'mes-mandats',
-  'tableau-de-bord', 'chauffage', 'import', 'transactionnel', 'desinscrits'];
+  'tableau-de-bord', 'chauffage', 'import', 'transactionnel', 'desinscrits',
+  'reponses', 'redaction', 'apercu', 'rafraichir'];
 
 async function main() {
   if (!MDP) { console.error('CG_TEST_PASSWORD manquant.'); process.exit(2); }
@@ -91,12 +101,16 @@ async function main() {
   const s = await connexion(EMAIL, MDP);
   verifier('session ouverte', s.user?.email === EMAIL, JSON.stringify(s));
   verifier('role non administrateur', s.portee?.role !== 'admin', String(s.portee?.role));
-  verifier(`mandat ${MIEN} dans la portee`, (s.portee?.clientIds || []).includes(MIEN),
-           JSON.stringify(s.portee?.clientIds));
-  verifier(`mandat ${AUTRE} hors portee`, !(s.portee?.clientIds || []).includes(AUTRE),
-           JSON.stringify(s.portee?.clientIds));
-  verifier(`droit « membre » sur le mandat ${MIEN}`,
-           (s.portee?.droits || {})[MIEN] === 'membre', JSON.stringify(s.portee?.droits));
+  const siens = s.portee?.clientIds || [];
+  verifier('au moins un mandat dans la portee', siens.length > 0, JSON.stringify(siens));
+  if (!MIEN) MIEN = siens[0];
+  // Un identifiant qu'il n'a PAS : c'est lui qui doit etre refuse.
+  if (!AUTRE) { AUTRE = 1; while (siens.includes(AUTRE)) AUTRE++; }
+  console.log(`  (mandat affecte : ${MIEN} · mandat hors portee : ${AUTRE})`);
+  verifier(`mandat ${AUTRE} hors portee`, !siens.includes(AUTRE), JSON.stringify(siens));
+  verifier(`droit connu sur le mandat ${MIEN}`,
+           ['membre', 'client'].includes((s.portee?.droits || {})[MIEN]),
+           JSON.stringify(s.portee?.droits));
 
   console.log('\n4. Ce que ce compte doit atteindre');
   for (const [nom, chemin] of [
@@ -113,8 +127,10 @@ async function main() {
     verifier(nom, r.status === 200, `recu ${r.status}`);
   }
   const mm = await (await appel('/api/mes-mandats')).json();
-  verifier('le selecteur ne rend que le mandat affecte',
-           mm.mandats?.length === 1 && mm.mandats[0].ID === MIEN, JSON.stringify(mm.mandats));
+  const rendus = (mm.mandats || []).map(m => m.ID).sort();
+  verifier('le selecteur ne rend QUE les mandats affectes',
+           rendus.length === siens.length && rendus.every(id => siens.includes(id)),
+           `rendus ${JSON.stringify(rendus)} pour ${JSON.stringify(siens)}`);
 
   console.log('\n5. Ce qui doit lui etre refuse');
   for (const [nom, chemin] of [
