@@ -203,10 +203,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       textes = await Promise.all(ORIENTATIONS.map(o => demander(o)));
     } catch (e) { return res.status(502).json({ erreur: (e as Error).message }); }
+    const SAUT = "\n\n";
     const propositions = textes.filter(Boolean)
-      .map(t => [appel, t, sig].filter(Boolean).join("
-
-"));
+      .map(t => [appel, t, sig].filter(Boolean).join(SAUT));
     if (!propositions.length) return res.status(502).json({ erreur: "réponse vide du modèle" });
     return res.json({ ok: true, propositions, html: propositions[0] });
   }
