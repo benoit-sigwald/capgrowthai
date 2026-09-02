@@ -45,6 +45,8 @@ function Reponses() {
   const [brouillon, setBrouillon] = useState("");
   const [consigne, setConsigne] = useState("");
   const [ia, setIa] = useState(false);
+  // « auto » suit le message recu ; on peut imposer, message par message.
+  const [langue, setLangue] = useState("auto");
   const [msg, setMsg] = useState("");
   // Par defaut, ce qui attend une reponse : une liste ou le traite et le
   // non-traite se melangent ne dit plus ce qu'il reste a faire.
@@ -86,6 +88,8 @@ function Reponses() {
         destinataire: [r.FIRST_NAME, r.LAST_NAME].filter(Boolean).join(" ") || String(r.EMAIL),
         signature: signatureDe(r),
         envoye: String(r.MESSAGE_ENVOYE ?? ""),
+        langueEnvoi: String(r.LANGUE_ENVOI ?? ""),
+        langue,
         /*
          * Pas le nom INTERNE de la campagne : « 02.09 test nouvelle fiche » est
          * une etiquette de travail, et le modele la reprenait telle quelle dans
@@ -274,6 +278,12 @@ function Reponses() {
               <input style={{ flex: 1, minWidth: 200 }} value={consigne}
                 placeholder="Optionnel : « propose un appel jeudi », « décline poliment »…"
                 onChange={e => setConsigne(e.target.value)} />
+              <select value={langue} onChange={e => setLangue(e.target.value)}
+                title="Langue de la réponse">
+                <option value="auto">langue auto</option>
+                <option value="fr">français</option>
+                <option value="en">anglais</option>
+              </select>
               <button className="btn" disabled={ia} onClick={() => proposer(courant)}>
                 {ia ? "…" : "Proposer une réponse (IA)"}</button>
             </div>

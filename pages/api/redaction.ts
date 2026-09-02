@@ -92,8 +92,13 @@ function consigneReponse(r: typeof DEFAUTS) {
     "- Ne promets pas de document que tu ne sais pas exister.",
     r.LANGUE && r.LANGUE !== "auto"
       ? `- Reponds en ${r.LANGUE === "fr" ? "francais" : "anglais"}.`
-      : "- Reponds dans la LANGUE DU MESSAGE RECU, sans exception : c'est celle "
-        + "que la personne a choisie en ecrivant.",
+      /*
+       * Un « ok on fonce » de quatre mots ne dit pas dans quelle langue on
+       * s'adresse a quelqu'un. Le message qu'on lui avait ecrit, si.
+       */
+      : "- Reponds dans la langue du MESSAGE RECU. S'il est trop court pour en "
+        + "juger (moins d'une quinzaine de mots), reponds dans la langue du "
+        + "message que NOUS avions envoye.",
     "- N'ecris ni « Madame » ni « Monsieur » : tu ne connais pas le genre de la "
       + "personne, et il ne se deduit pas d'un prenom.",
   ];
@@ -122,17 +127,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cle = process.env.MISTRAL_API_KEY;
   if (!cle) return res.status(503).json({ erreur: "aucune clé de modèle configurée sur le serveur" });
 
-  const { html, consigne, mode, recu, contexte, client, destinataire, signature, envoye } =
+  const { html, consigne, mode, recu, contexte, client, destinataire, signature, envoye,
+          langue, langueEnvoi } =
     (req.body ?? {}) as { html?: string; consigne?: string; mode?: string; recu?: string;
       contexte?: string; client?: number; destinataire?: string; signature?: string;
-      envoye?: string };
+      envoye?: string; langue?: string; langueEnvoi?: string };
   const reponse = mode === "reponse";
 
   // Les reglages du mandat font la voix : sans eux, chaque reponse aurait un
   // ton different de la precedente.
   const cid = Number(client || 0);
-  const reglages = reponse && cid && clientAutorise(p, cid)
+  const reglagesBase = reponse && cid && clientAutorise(p, cid)
     ? await reglagesDuMandat(cid) : DEFAUTS;
+  /*
+   * La langue demandee a l'ecran l'emporte sur le reglage du mandat : c'est un
+   * choix pris devant le message, pas un reglage general.
+   */
+  const reglages = langue && langue !== "auto"
+    ? { ...reglagesBase, LANGUE: langue } : reglagesBase;
 
   if (reponse) {
     if (!recu?.trim()) return res.status(400).json({ erreur: "message reçu vide" });

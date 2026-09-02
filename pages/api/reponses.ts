@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              s.STATUS, s.EXPEDITEUR_EMAIL, c.NAME CAMPAGNE, c.CAMPAIGN_ID,
              -- Le message d'origine : sans lui, on repond a une reponse sans
              -- savoir a quoi elle repond, et le modele non plus.
-             s.SENT_AT, s.RENDERED_BODY MESSAGE_ENVOYE,
+             s.SENT_AT, s.RENDERED_BODY MESSAGE_ENVOYE, s.LANGUAGE LANGUE_ENVOI,
              v.FIRST_NAME, v.LAST_NAME, v.COMPANY, v.PERSON_KEY, v.LANGUES,
              x.PRENOM, x.NOM, x.FONCTION, x.SOCIETE, x.ADRESSE, x.TELEPHONE, x.SITE,
              x.NOM_AFFICHAGE,
