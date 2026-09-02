@@ -62,21 +62,17 @@ function consigneReponse(r: typeof DEFAUTS) {
     "Longueur : " + (LONGUEURS[r.LONGUEUR] || LONGUEURS.bref),
     "",
     "Structure imposee, dans cet ordre :",
-    r.APPEL
-      ? `1. Formule d'appel EXACTEMENT : « ${r.APPEL} »`
-      /*
-       * Le genre ne se devine pas.
-       *
-       * Mesure du 2026-09-02 : le modele a ecrit « Madame, » a un homme dont le
-       * prenom lui etait donne. Ecrire « Monsieur » a une investisseuse, ou
-       * l'inverse, coute un contact — et cela ne se rattrape pas. On impose
-       * donc le nom quand il est connu, et une formule neutre sinon.
-       */
-      : "1. Formule d'appel OBLIGATOIRE, construite ainsi et pas autrement : "
-        + "si un destinataire est nomme, ecris « Bonjour <Prenom> <Nom>, » ou "
-        + "« Bonjour <Prenom>, ». N'ecris JAMAIS « Madame » ni « Monsieur » seuls : "
-        + "tu ne connais pas le genre de la personne et tu n'as pas a le deduire "
-        + "de son prenom. Si aucun nom n'est donne, ecris « Madame, Monsieur, ».",
+    /*
+     * La formule d'appel est COLLEE PAR NOUS, comme la signature.
+     *
+     * Deux tentatives pour l'obtenir du modele, deux echecs mesures le
+     * 2026-09-02 : « Madame, » adresse a un homme, puis « Monsieur Sigwald, »
+     * malgre l'interdiction explicite de deduire un genre. Un modele ne
+     * s'empeche pas de deviner ; on cesse donc de lui demander. Ce qui doit
+     * etre exact ne se genere pas.
+     */
+    "1. NE COMMENCE PAS par une salutation : elle est ajoutee avant ton texte. "
+      + "Commence directement par le remerciement.",
     "2. Un remerciement bref pour le message recu, ou un accuse de reception.",
     "3. Le fond de la reponse.",
     r.CONGE
@@ -98,7 +94,8 @@ function consigneReponse(r: typeof DEFAUTS) {
       ? `- Reponds en ${r.LANGUE === "fr" ? "francais" : "anglais"}.`
       : "- Reponds dans la LANGUE DU MESSAGE RECU, sans exception : c'est celle "
         + "que la personne a choisie en ecrivant.",
-    "- Nomme le destinataire dans la formule d'appel quand son nom est donne.",
+    "- N'ecris ni « Madame » ni « Monsieur » : tu ne connais pas le genre de la "
+      + "personne, et il ne se deduit pas d'un prenom.",
   ];
   if (r.CONTEXTE) lignes.push("", "Ce que tu dois savoir de la maison :", r.CONTEXTE);
   return lignes.join("\n");
@@ -187,16 +184,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/, "").trim();
   }
 
+  /*
+   * « Bonjour Prenom, » quand on connait le nom, la formule imposee du mandat
+   * si elle existe, « Madame, Monsieur, » a defaut — jamais une deduction.
+   */
+  function formuleAppel() {
+    if (reglages.APPEL) return String(reglages.APPEL).trim();
+    const nom = (destinataire || "").trim();
+    if (!nom) return "Madame, Monsieur,";
+    const prenom = nom.split(/\s+/)[0];
+    return `Bonjour ${prenom},`;
+  }
+
   if (reponse) {
     const sig = (signature || "").trim();
+    const appel = formuleAppel();
     let textes: string[];
     try {
       textes = await Promise.all(ORIENTATIONS.map(o => demander(o)));
     } catch (e) { return res.status(502).json({ erreur: (e as Error).message }); }
     const propositions = textes.filter(Boolean)
-      .map(t => (sig ? `${t}
+      .map(t => [appel, t, sig].filter(Boolean).join("
 
-${sig}` : t));
+"));
     if (!propositions.length) return res.status(502).json({ erreur: "réponse vide du modèle" });
     return res.json({ ok: true, propositions, html: propositions[0] });
   }
