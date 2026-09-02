@@ -8,21 +8,49 @@ import { useMandat } from "@/lib/mandat";
  * Jamais de trompe-l'oeil : un menu qui promet un canal inaccessible fait
  * perdre plus de temps qu'il n'en fait gagner.
  */
-const SECTIONS: { id: string; libelle: string; etat: "actif" | "a_venir" | "indisponible"; motif?: string }[] = [
+type Section = { id: string; libelle: string;
+                 etat: "actif" | "a_venir" | "indisponible"; motif?: string };
+
+const SECTIONS: Section[] = [
   { id: "", libelle: "Tableau de bord", etat: "actif" },
   { id: "contacts", libelle: "Contacts", etat: "actif" },
   { id: "campagnes", libelle: "Campagnes", etat: "actif" },
   { id: "reponses", libelle: "E-mails", etat: "actif" },
-  { id: "automatisation", libelle: "Automatisation", etat: "actif" },
   { id: "modeles", libelle: "Modèles", etat: "actif" },
   { id: "statistiques", libelle: "Statistiques", etat: "actif" },
   { id: "transactionnel", libelle: "Transactionnel", etat: "actif" },
-  { id: "crm", libelle: "CRM", etat: "actif" },
   { id: "sms", libelle: "SMS", etat: "indisponible", motif: "Aucun crédit SMS Brevo" },
   { id: "whatsapp", libelle: "WhatsApp", etat: "indisponible", motif: "Pas de compte WhatsApp Business" },
   { id: "conversations", libelle: "Conversations", etat: "indisponible", motif: "Aucun widget de chat installé" },
   { id: "parametres", libelle: "Paramètres", etat: "actif" },
 ];
+
+/*
+ * En chantier.
+ *
+ * Ces ecrans fonctionnent mais ne sont pas arretes : les regrouper en bas
+ * evite qu'on s'appuie dessus comme sur le reste. Un menu qui melange l'acquis
+ * et le provisoire ne dit plus lequel est lequel.
+ */
+const CHANTIER: Section[] = [
+  { id: "automatisation", libelle: "Automatisation", etat: "actif" },
+  { id: "crm", libelle: "CRM", etat: "actif" },
+];
+
+function lien(s: Section, section: string) {
+  return s.etat === "actif" ? (
+    <Link key={s.id} href={`/${s.id}`} style={{
+      padding: "8px 10px", borderRadius: 10, color: "inherit",
+      background: section === s.id ? "var(--card)" : "transparent",
+      fontWeight: section === s.id ? 600 : 400 }}>{s.libelle}</Link>
+  ) : (
+    <span key={s.id} title={s.motif} style={{ padding: "8px 10px",
+      color: "var(--ink-3)", cursor: "not-allowed" }}>
+      {s.libelle} <small style={{ fontSize: 9 }}>
+        {s.etat === "indisponible" ? "—" : "bientôt"}</small>
+    </span>
+  );
+}
 
 export default function Coquille({ section, children }: { section: string; children: React.ReactNode }) {
   const { mandat, mandats, choisir } = useMandat();
@@ -36,16 +64,14 @@ export default function Coquille({ section, children }: { section: string; child
           style={{ marginBottom: 14 }}>
           {mandats.map(m => <option key={m.ID} value={m.ID}>{m.NOM}</option>)}
         </select>
-        {SECTIONS.map(s => s.etat === "actif" ? (
-          <Link key={s.id} href={`/${s.id}`} style={{
-            padding: "8px 10px", borderRadius: 10, color: "inherit",
-            background: section === s.id ? "var(--card)" : "transparent",
-            fontWeight: section === s.id ? 600 : 400 }}>{s.libelle}</Link>
-        ) : (
-          <span key={s.id} title={s.motif} style={{ padding: "8px 10px", color: "var(--ink-3)", cursor: "not-allowed" }}>
-            {s.libelle} <small style={{ fontSize: 9 }}>{s.etat === "indisponible" ? "—" : "bientôt"}</small>
-          </span>
-        ))}
+        {SECTIONS.map(s => lien(s, section))}
+
+        <div style={{ marginTop: 18, padding: "0 10px 4px", fontSize: 10,
+          letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+          WIP
+        </div>
+        {CHANTIER.map(s => lien(s, section))}
+
         <button className="btn" style={{ marginTop: "auto" }}
           onClick={() => signOut({ callbackUrl: "/capgrowth/connexion" })}>Se déconnecter</button>
       </aside>
