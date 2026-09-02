@@ -64,8 +64,19 @@ function consigneReponse(r: typeof DEFAUTS) {
     "Structure imposee, dans cet ordre :",
     r.APPEL
       ? `1. Formule d'appel EXACTEMENT : « ${r.APPEL} »`
-      : "1. Une formule d'appel adaptee (« Madame, », « Monsieur, », ou « Bonjour <Prenom>, » "
-        + "si le prenom est connu et le ton cordial). Jamais de message qui commence sans salutation.",
+      /*
+       * Le genre ne se devine pas.
+       *
+       * Mesure du 2026-09-02 : le modele a ecrit « Madame, » a un homme dont le
+       * prenom lui etait donne. Ecrire « Monsieur » a une investisseuse, ou
+       * l'inverse, coute un contact — et cela ne se rattrape pas. On impose
+       * donc le nom quand il est connu, et une formule neutre sinon.
+       */
+      : "1. Formule d'appel OBLIGATOIRE, construite ainsi et pas autrement : "
+        + "si un destinataire est nomme, ecris « Bonjour <Prenom> <Nom>, » ou "
+        + "« Bonjour <Prenom>, ». N'ecris JAMAIS « Madame » ni « Monsieur » seuls : "
+        + "tu ne connais pas le genre de la personne et tu n'as pas a le deduire "
+        + "de son prenom. Si aucun nom n'est donne, ecris « Madame, Monsieur, ».",
     "2. Un remerciement bref pour le message recu, ou un accuse de reception.",
     "3. Le fond de la reponse.",
     r.CONGE
