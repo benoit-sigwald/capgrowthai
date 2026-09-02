@@ -89,7 +89,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
        WHERE i.SOURCE_REF LIKE 'reponse:%' AND i.SENS = 'sortant'
          AND (i.CLIENT_ID = :cid OR (i.CLIENT_ID IS NULL AND :admin = 1))
        ORDER BY i.QUAND`, { cid, admin: p.role === "admin" ? 1 : 0 });
-    return res.json({ rows: r.rows, envoyees: envoyees.rows });
+    /*
+     * Le fil des messages RECUS. mailing_sends n'en portait qu'un — une
+     * colonne ne tient pas une conversation — et les reponses suivantes
+     * etaient lues dans la boite puis jetees en silence.
+     */
+    const recues = await q(`
+      SELECT r.SEND_ID, r.RECU_LE, r.EXTRAIT, r.EXPEDITEUR, r.EST_UN_REFUS
+        FROM INVESTORS.MAILING_REPLIES r
+        JOIN INVESTORS.MAILING_SENDS s ON s.SEND_ID = r.SEND_ID
+        JOIN INVESTORS.MAILING_CAMPAIGNS c ON c.CAMPAIGN_ID = s.CAMPAIGN_ID
+       WHERE (c.CLIENT_ID = :cid OR (c.CLIENT_ID IS NULL AND :admin = 1))
+       ORDER BY r.RECU_LE`, { cid, admin: p.role === "admin" ? 1 : 0 });
+
+    return res.json({ rows: r.rows, envoyees: envoyees.rows, recues: recues.rows });
   }
 
   if (req.method === "POST") {

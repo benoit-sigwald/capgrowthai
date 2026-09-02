@@ -45,6 +45,26 @@ async function lire(r: Response) {
   }
 }
 
+/*
+ * Le fil d'un echange : les messages recus et les reponses envoyees, melanges
+ * puis ranges par date. Le premier message recu vient de MAILING_SENDS quand
+ * le fil est vide — les echanges anterieurs a la table des reponses n'ont que
+ * cette trace-la, et la perdre serait pire que de la doubler.
+ */
+function fil(courant: Reponse, recues: Reponse[], envoyees: Reponse[]) {
+  const id = String(courant.SEND_ID);
+  const entrants = recues.filter(r => String(r.SEND_ID) === id)
+    .map(r => ({ sens: "entrant", quand: r.RECU_LE, texte: String(r.EXTRAIT ?? "") }));
+  if (!entrants.length && courant.REPLY_SNIPPET) {
+    entrants.push({ sens: "entrant", quand: courant.REPLIED_AT,
+                    texte: String(courant.REPLY_SNIPPET) });
+  }
+  const sortants = envoyees.filter(e => String(e.SEND_ID) === id)
+    .map(e => ({ sens: "sortant", quand: e.QUAND, texte: String(e.RESUME ?? "") }));
+  return [...entrants, ...sortants]
+    .sort((a, b) => String(a.quand).localeCompare(String(b.quand)));
+}
+
 const initiales = (nom: string) => nom.trim().split(/\s+/).slice(0, 2)
   .map(m => m[0]?.toUpperCase() ?? "").join("") || "?";
 
@@ -62,6 +82,7 @@ function Reponses() {
   // Toutes les reponses envoyees, dans l'ordre : un echange en compte parfois
   // plusieurs, et n'en montrer qu'une fait croire que les autres sont perdues.
   const [envoyees, setEnvoyees] = useState<Reponse[]>([]);
+  const [recues, setRecues] = useState<Reponse[]>([]);
   const [choisi, setChoisi] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
   const [consigne, setConsigne] = useState("");
@@ -80,7 +101,8 @@ function Reponses() {
   const charger = useCallback(() => {
     if (!mandat) return;
     fetch(`/capgrowth/api/reponses?client=${mandat.ID}`).then(r => r.json())
-      .then(d => { setRows(d.rows || []); setEnvoyees(d.envoyees || []); });
+      .then(d => { setRows(d.rows || []); setEnvoyees(d.envoyees || []);
+                   setRecues(d.recues || []); });
   }, [mandat]);
   useEffect(charger, [charger]);
   useEffect(() => {
@@ -286,19 +308,20 @@ function Reponses() {
                 {String(courant.MESSAGE_ENVOYE)}</div>
             </details>)}
 
-          <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap",
-            padding: "4px 0 14px" }}>
-            {String(courant.REPLY_SNIPPET ?? "(message vide)")}
-          </div>
-
-          {envoyees.filter(e => String(e.SEND_ID) === String(courant.SEND_ID)).map((e, i) => (
-            <div key={i} style={{ borderTop: "1px solid var(--hair-soft)", paddingTop: 12,
-              marginBottom: 12 }}>
+          {/* Le fil : ce qu'on a recu et ce qu'on a repondu, dans l'ordre.
+              Une conversation ne se lit pas en deux blocs separes. */}
+          {fil(courant, recues, envoyees).map((m, i) => (
+            <div key={i} style={{ padding: "10px 0",
+              borderTop: i ? "1px solid var(--hair-soft)" : "none",
+              marginLeft: m.sens === "sortant" ? 24 : 0 }}>
               <div style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>
-                Votre réponse, le {quand(e.QUAND)}</div>
+                {m.sens === "sortant" ? "Votre réponse" : "Reçu"}, le {quand(m.quand)}
+              </div>
               <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap",
-                color: "var(--ink-2)" }}>{String(e.RESUME ?? "")}</div>
+                color: m.sens === "sortant" ? "var(--ink-2)" : "inherit" }}>{m.texte}</div>
             </div>))}
+
+
 
           <div style={{ display: "grid", gap: 8, borderTop: "1px solid var(--hair-soft)",
             paddingTop: 12 }}>
