@@ -59,9 +59,21 @@ export function construireFiltre(p: Record<string, string | undefined>) {
              OR UPPER(NVL(EMAIL,' ')) LIKE :q)`);
     binds.q = `%${p.q.toUpperCase()}%`;
   }
-  if (p.source) {
-    if (p.source === "gate") w.push(`SOURCE LIKE 'gate:%'`);
-    else { w.push(`SOURCE = :source`); binds.source = p.source; }
+  /*
+   * Les bases se cumulent, elles aussi.
+   *
+   * Le selecteur imposait UNE base : filtrer « Investisseurs » masquait donc en
+   * silence les 1 856 adresses du referentiel prospects, et l'ecran affichait
+   * 953 sans dire ce qu'il laissait dehors.
+   */
+  const sources = String(p.source || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (sources.length) {
+    const conditions = sources.map((src, i) => {
+      if (src === "gate") return `SOURCE LIKE 'gate:%'`;
+      binds[`src${i}`] = src;
+      return `SOURCE = :src${i}`;
+    });
+    w.push(conditions.length === 1 ? conditions[0] : `(${conditions.join(" OR ")})`);
   }
   /*
    * Les canaux se cumulent, et se lisent en OU.

@@ -77,3 +77,20 @@ describe("construireFiltre : canaux cumules", () => {
   });
   it("sans canal, aucune contrainte", () => assert.equal(ou("").includes("IS NOT NULL"), false));
 });
+
+/* Les bases se cumulent aussi : « Investisseurs » seul masquait 1 856 adresses. */
+describe("construireFiltre : bases cumulees", () => {
+  const ou = (source: string) => construireFiltre({ source }).where;
+  it("une base seule", () => assert.match(ou("investors"), /SOURCE = :src0/));
+  it("deux bases se lisent en OU", () => {
+    assert.match(ou("investors,prospects"), /SOURCE = :src0 OR SOURCE = :src1/);
+  });
+  it("« gate » reste un prefixe, pas une egalite", () => {
+    assert.match(ou("gate"), /SOURCE LIKE 'gate:%'/);
+  });
+  it("les valeurs passent par des binds, jamais par le texte SQL", () => {
+    const { where, binds } = construireFiltre({ source: "investors' OR 1=1--" });
+    assert.doesNotMatch(where, /1=1/);
+    assert.equal(binds.src0, "investors' OR 1=1--");
+  });
+});

@@ -16,9 +16,21 @@ const NOM_LANGUE: Record<string, string> = {
 };
 export const nomLangue = (c: string) => NOM_LANGUE[c] || c;
 
-const BASES: Record<string, string> = { investors: "Investisseurs", prospects: "Prospects PACA",
-  prospects_dirigeant: "Dirigeants" };
-export const nomBase = (s: string) => BASES[s] || (s.startsWith("gate:") ? "Formulaire " + s.slice(5) : s);
+/*
+ * Les bases du referentiel, telles qu'elles se nomment dans V_PERSONNES.
+ *
+ * Une seule liste sert au filtre ET au libelle d'une ligne : deux listes de
+ * noms pour la meme chose finissent par se contredire.
+ */
+const BASES = [
+  { id: "investors", libelle: "Investisseurs" },
+  { id: "prospects", libelle: "Prospects PACA" },
+  { id: "prospects_dirigeant", libelle: "Dirigeants" },
+  { id: "gate", libelle: "Formulaires" },
+] as const;
+
+export const nomBase = (s: string) => BASES.find(b => b.id === s)?.libelle
+  || (s.startsWith("gate:") ? "Formulaire " + s.slice(5) : s);
 
 /* Les canaux par lesquels on peut atteindre quelqu'un. */
 const CANAUX = [
@@ -44,6 +56,15 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
   // masqueraient tout le reste. Lecon mesuree sur l'outil precedent.
   const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable", langues: "" });
   const [ouvertCanaux, setOuvertCanaux] = useState(false);
+  const [ouvertBases, setOuvertBases] = useState(false);
+
+  const basesChoisies = filtre.source.split(",").map(x => x.trim()).filter(Boolean);
+  const basculerBase = (id: string) => {
+    const suite = basesChoisies.includes(id)
+      ? basesChoisies.filter(b => b !== id) : [...basesChoisies, id];
+    setFiltre({ ...filtre, source: suite.join(",") });
+    setPage(0);
+  };
 
   /*
    * « joignable » reste la valeur ecrite dans les segments enregistres : on la
@@ -87,13 +108,30 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <input placeholder="Nom, société, e-mail…" value={filtre.q}
           onChange={e => { setFiltre({ ...filtre, q: e.target.value }); setPage(0); }} style={{ width: 260 }} />
-        <select value={filtre.source} onChange={e => { setFiltre({ ...filtre, source: e.target.value }); setPage(0); }}>
-          <option value="">Toutes les bases</option>
-          <option value="investors">Investisseurs</option>
-          <option value="prospects">Prospects PACA</option>
-          <option value="prospects_dirigeant">Dirigeants</option>
-          <option value="gate">Formulaires</option>
-        </select>
+        {/* Les bases se cochent aussi : filtrer « Investisseurs » masquait en
+            silence les 1 856 adresses du referentiel prospects. */}
+        <div style={{ position: "relative" }}>
+          <button className="btn" onClick={() => setOuvertBases(o => !o)}>
+            {basesChoisies.length === 0 ? "Toutes les bases"
+              : basesChoisies.map(b => BASES.find(x => x.id === b)?.libelle).join(" ou ")}
+          </button>
+          {ouvertBases && (
+            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
+              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
+              boxShadow: "var(--shadow)", padding: 10, minWidth: 200 }}>
+              {BASES.map(b => (
+                <label key={b.id} style={{ display: "flex", gap: 6, alignItems: "center",
+                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
+                  <input type="checkbox" checked={basesChoisies.includes(b.id)}
+                    onChange={() => basculerBase(b.id)} />
+                  {b.libelle}
+                </label>))}
+              {basesChoisies.length > 0 && (
+                <button className="btn" style={{ width: "100%", marginTop: 8 }}
+                  onClick={() => { setFiltre({ ...filtre, source: "" }); setPage(0); }}>
+                  Toutes les bases</button>)}
+            </div>)}
+        </div>
         {/* Les canaux se cochent, et se cumulent en OU : « qui puis-je
             atteindre par e-mail OU par telephone » demandait deux recherches. */}
         <div style={{ position: "relative" }}>
