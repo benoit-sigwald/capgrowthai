@@ -15,7 +15,7 @@
  * en cachant le probleme un peu mieux a chaque fois.
  *
  *   node verifier-comptes-gate.js            etat, sans alerte
- *   node verifier-comptes-gate.js --alerter   previent par ntfy si anomalie
+ *   node verifier-comptes-gate.js --alerter   previent par courriel si anomalie
  *
  * Se connecte en ADMIN : ACCOUNT_STATUS ne vit que dans DBA_USERS, aucun role
  * moindre ne le lit.
@@ -27,14 +27,12 @@ const ALERTER = process.argv.includes('--alerter');
 /*
  * --essai : force une anomalie fictive pour eprouver le chemin d'alerte.
  *
- * Un canal d'alerte ne se verifie qu'en s'en servant. Celui-ci a deux voies et
- * un repli ; sans moyen de le declencher a la demande, on ne saurait qu'il est
- * casse le jour ou il aurait du parler. Le message dit clairement qu'il s'agit
- * d'un essai — une alerte de test prise pour une vraie coute une matinee.
+ * Un canal d'alerte ne se verifie qu'en s'en servant. Le courriel par le
+ * routeur en est le seul ; sans moyen de le declencher a la demande, on ne
+ * saurait qu'il est casse le jour ou il aurait du parler. Le message dit qu'il
+ * s'agit d'un essai — une alerte de test prise pour une vraie coute une matinee.
  */
 const ESSAI = process.argv.includes('--essai');
-const NTFY_URL = process.env.NTFY_URL || 'https://ntfy.sh';
-const NTFY_TOPIC = process.env.NTFY_TOPIC;
 
 async function main() {
   const cn = await oracledb.getConnection({
@@ -94,36 +92,16 @@ async function main() {
                       : `Comptes GATE_ : ${lignes.length} anomalie(s)`;
 
   /*
-   * Deux canaux, dans cet ordre, et l'echec du premier n'est pas fatal.
+   * Un seul canal : le courriel par le routeur.
    *
-   * ntfy.sh est arrive sature le jour ou ce controle a ete pose : HTTP 429,
-   * quota quotidien du palier gratuit. Une alerte qui part dans le vide donne
-   * seulement l'impression d'etre surveille — c'est pire que pas d'alerte, on
-   * cesse de regarder.
+   * ntfy a ete retire le 2026-09-03 sur demande. Il etait sature en permanence
+   * — quota quotidien du palier gratuit atteint par les notifications de la
+   * porte — donc muet quand il aurait fallu qu'il parle. Garder un canal qui
+   * refuse les messages fait croire qu'on surveille : c'est pire que de ne pas
+   * en avoir, on cesse de regarder ailleurs.
    */
-  /*
-   * Le titre part dans un EN-TETE HTTP : il ne peut contenir que de l'ASCII.
-   * Un tiret cadratin y a fait echouer l'envoi ntfy pendant l'essai de pose —
-   * le repli a sauve le message, mais le canal principal etait muet pour une
-   * raison de typographie.
-   */
-  const titreAscii = sujet.normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^ -~]/g, '-');
-
   let porte = false;
-  if (NTFY_TOPIC) {
-    try {
-      const rep = await fetch(`${NTFY_URL}/${NTFY_TOPIC}`, {
-        method: 'POST', body: corps,
-        headers: { Title: titreAscii,
-                   Priority: fermes.length ? 'high' : 'default', Tags: 'lock' },
-      });
-      console.log('ntfy :', rep.status);
-      porte = rep.ok;
-    } catch (e) { console.log('ntfy injoignable :', String(e.message).slice(0, 80)); }
-  }
-
-  if (!porte && process.env.MAILER_BASE && process.env.MAILER_SECRET) {
+  if (process.env.MAILER_BASE && process.env.MAILER_SECRET) {
     try {
       const rep = await fetch(`${process.env.MAILER_BASE}/alerte`, {
         method: 'POST',
@@ -131,7 +109,7 @@ async function main() {
                    'x-mailer-secret': process.env.MAILER_SECRET },
         body: JSON.stringify({ sujet, corps }),
       });
-      console.log('courriel de secours :', rep.status);
+      console.log('courriel :', rep.status);
       porte = rep.ok;
     } catch (e) { console.log('routeur injoignable :', String(e.message).slice(0, 80)); }
   }
