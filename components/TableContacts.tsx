@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import MenuCases from "./MenuCases";
+import { useMandat } from "@/lib/mandat";
 
 export type Personne = {
   PERSON_KEY: string; SOURCE: string; FIRST_NAME: string | null; LAST_NAME: string | null;
@@ -50,6 +51,9 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
   // « selectionner les N du filtre » sans transporter N identifiants.
   surFiltre?: (filtre: Record<string, string>, total: number) => void;
 }) {
+  const { mandat } = useMandat();
+  const [segments, setSegments] = useState<{ ID: number; NOM: string;
+    FILTRE: Record<string, string> }[]>([]);
   const [rows, setRows] = useState<Personne[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -82,6 +86,12 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
       .then(d => setSecteurs([...(d.familles || []), ...(d.autres || [])])).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!mandat) return;
+    fetch(`/capgrowth/api/segments?client=${mandat.ID}`).then(r => r.json())
+      .then(d => setSegments(d.rows || [])).catch(() => {});
+  }, [mandat]);
+
   const listeDe = (champ: "pays" | "secteur") =>
     filtre[champ].split(",").map(x => x.trim()).filter(Boolean);
 
@@ -100,6 +110,23 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <input placeholder="Nom, société, e-mail…" value={filtre.q}
           onChange={e => { setFiltre({ ...filtre, q: e.target.value }); setPage(0); }} style={{ width: 260 }} />
+        {/* Partir d'un segment.
+            Il CHARGE ses criteres dans les filtres, il ne s'y substitue pas :
+            on voit ce que le segment contient, et on peut l'ajuster sans le
+            modifier. Le segment lui-meme ne bouge que dans son propre ecran. */}
+        {segments.length > 0 && (
+          <select value="" style={{ maxWidth: 200 }}
+            onChange={e => {
+              const s = segments.find(x => String(x.ID) === e.target.value);
+              e.target.value = "";
+              if (!s) return;
+              setFiltre({ q: "", source: "", canal: "", langues: "", pays: "", secteur: "",
+                          ...(s.FILTRE || {}) });
+              setPage(0);
+            }}>
+            <option value="">Partir d&apos;un segment…</option>
+            {segments.map(s => <option key={s.ID} value={s.ID}>{s.NOM}</option>)}
+          </select>)}
         {/* Les bases se cochent : filtrer « Investisseurs » masquait en silence
             les 1 856 adresses du referentiel prospects. */}
         <MenuCases titre={basesChoisies.length === 0 ? "Toutes les bases"
