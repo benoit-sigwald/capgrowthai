@@ -94,3 +94,31 @@ describe("construireFiltre : bases cumulees", () => {
     assert.equal(binds.src0, "investors' OR 1=1--");
   });
 });
+
+/*
+ * Pays et type d'entreprise, en choix multiple.
+ *
+ * Le cas qui compte : « Family office » existe sous deux etiquettes dans la
+ * base. Cocher la famille doit prendre les deux, sinon le segment est ampute
+ * de 3 097 fiches sans que rien ne le signale.
+ */
+describe("construireFiltre : pays et secteur", () => {
+  it("le pays accepte plusieurs codes", () => {
+    const { where, binds } = construireFiltre({ pays: "FR,US" });
+    assert.match(where, /COUNTRY IN \(:pay0, :pay1\)/);
+    assert.deepEqual([binds.pay0, binds.pay1], ["FR", "US"]);
+  });
+  it("un pays qui n'est pas un code a deux lettres est ignore", () => {
+    assert.equal(construireFiltre({ pays: "France" }).where.includes("COUNTRY"), false);
+  });
+  it("une famille se developpe en toutes ses etiquettes", () => {
+    const { binds } = construireFiltre({ secteur: "family_office" });
+    const valeurs = Object.keys(binds).filter(k => k.startsWith("sec")).map(k => binds[k]);
+    assert.ok(valeurs.includes("Family office"), "l'etiquette francaise doit y etre");
+    assert.ok(valeurs.includes("family_office"), "l'etiquette technique aussi");
+  });
+  it("une activite hors famille reste filtrable telle quelle", () => {
+    const { binds } = construireFiltre({ secteur: "Hôtellerie" });
+    assert.equal(binds.sec0, "Hôtellerie");
+  });
+});

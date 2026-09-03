@@ -5,6 +5,55 @@
  * par le prefixe de PERSON_KEY. La vue reste une vue : ecrire dans une copie
  * creerait deux verites, et le prochain import ecraserait la saisie.
  */
+/*
+ * Le type d'entreprise, regroupe en familles.
+ *
+ * SECTEUR porte 195 valeurs distinctes, et la typologie investisseur y existe
+ * en DEUX vocabulaires : « Family office » (31 853 fiches) et « family_office »
+ * (3 097), « Gestion de patrimoine » (14 214), « wealth_manager » (2 637) et
+ * « cgp » (1 746) — la meme realite sous quatre etiquettes, selon la source qui
+ * a charge la fiche.
+ *
+ * Cocher « Family office » doit prendre les deux. Une case par etiquette brute
+ * aurait donne un segment amputé de 10 % sans que rien ne le signale : c'est le
+ * genre d'erreur qu'on ne decouvre qu'en comptant les envois.
+ *
+ * On regroupe donc a l'usage plutot que de reecrire la base : les fiches
+ * gardent la valeur de leur source, et l'ecran parle une seule langue.
+ */
+export const FAMILLES: { id: string; libelle: string; variantes: string[] }[] = [
+  { id: "family_office", libelle: "Family office",
+    variantes: ["Family office", "family_office"] },
+  { id: "gestion_patrimoine", libelle: "Gestion de patrimoine / CGP",
+    variantes: ["Gestion de patrimoine", "wealth_manager", "cgp",
+                "Conseil en gestion de patrimoine"] },
+  { id: "club_deal", libelle: "Club deal / immobilier",
+    variantes: ["Club deal / immobilier"] },
+  { id: "promoteur", libelle: "Promoteur immobilier",
+    variantes: ["promoteur"] },
+  { id: "capital_investissement", libelle: "Capital-investissement",
+    variantes: ["pe", "Capital-investissement"] },
+  { id: "capital_risque", libelle: "Capital-risque",
+    variantes: ["vc", "Capital-risque"] },
+  { id: "dette", libelle: "Dette privée",
+    variantes: ["debt_fund", "Fonds de dette"] },
+  { id: "angel", libelle: "Business angels",
+    variantes: ["angel", "angel_network"] },
+  { id: "crowdfunding", libelle: "Financement participatif",
+    variantes: ["crowdfunding"] },
+];
+
+/** Toutes les etiquettes brutes d'une liste de familles. */
+export function variantesDe(familles: string[]): string[] {
+  const ids = new Set(familles);
+  return FAMILLES.filter(f => ids.has(f.id)).flatMap(f => f.variantes);
+}
+
+/** La famille d'une etiquette brute, si elle en a une. */
+export function familleDe(secteur: string): string | null {
+  return FAMILLES.find(f => f.variantes.includes(secteur))?.id ?? null;
+}
+
 export const CHAMPS_GENERIQUES = ["prenom", "nom", "titre", "societe", "email",
   "telephone", "linkedin", "ville", "pays", "notes"] as const;
 export type ChampGenerique = (typeof CHAMPS_GENERIQUES)[number];
@@ -99,6 +148,37 @@ export function construireFiltre(p: Record<string, string | undefined>) {
   if (uniques.length) {
     w.push(uniques.length === 1 ? CANAUX[uniques[0]]
       : `(${uniques.map(c => CANAUX[c]).join(" OR ")})`);
+  }
+
+  /*
+   * Le pays, en choix multiple. Les valeurs sont des codes a deux lettres
+   * (FR, US, IL...) : on les filtre sur cette forme avant de les lier, une
+   * valeur venue d'une requete finissant dans du SQL.
+   */
+  if (p.pays) {
+    const codes = String(p.pays).split(",").map(c => c.trim().toUpperCase())
+      .filter(c => /^[A-Z]{2}$/.test(c)).slice(0, 40);
+    if (codes.length) {
+      const noms = codes.map((c, i) => { binds[`pay${i}`] = c; return `:pay${i}`; });
+      w.push(`COUNTRY IN (${noms.join(", ")})`);
+    }
+  }
+
+  /*
+   * Le type d'entreprise. L'ecran envoie des FAMILLES ; on les developpe ici en
+   * etiquettes brutes, car la base en porte plusieurs pour la meme realite
+   * (« Family office » et « family_office »). Une etiquette inconnue d'une
+   * famille est acceptee telle quelle : la longue traine de la nomenclature
+   * PACA n'a pas de famille, et doit rester filtrable.
+   */
+  if (p.secteur) {
+    const demandes = String(p.secteur).split(",").map(x => x.trim()).filter(Boolean);
+    const etiquettes = [...new Set([...variantesDe(demandes),
+      ...demandes.filter(d => !variantesDe([d]).length)])].slice(0, 60);
+    if (etiquettes.length) {
+      const noms = etiquettes.map((e, i) => { binds[`sec${i}`] = e; return `:sec${i}`; });
+      w.push(`SECTEUR IN (${noms.join(", ")})`);
+    }
   }
 
   if (p.langues) {

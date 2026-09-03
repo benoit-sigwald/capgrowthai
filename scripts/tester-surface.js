@@ -73,7 +73,7 @@ const ROUTES = ['clients', 'utilisateurs', 'personnes', 'segments', 'campagnes',
   'expediteurs', 'pipeline', 'taches', 'journal', 'automatisations', 'statistiques',
   'modeles', 'gabarits', 'attributs', 'langues', 'listes', 'mes-mandats',
   'tableau-de-bord', 'chauffage', 'import', 'transactionnel', 'desinscrits',
-  'reponses', 'redaction', 'apercu', 'rafraichir', 'reglages-ia'];
+  'reponses', 'redaction', 'apercu', 'rafraichir', 'reglages-ia', 'valeurs'];
 
 async function main() {
   if (!MDP) { console.error('CG_TEST_PASSWORD manquant.'); process.exit(2); }
