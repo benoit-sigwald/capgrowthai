@@ -3,7 +3,7 @@ import Coquille from "@/components/Coquille";
 import SousMenuContacts from "@/components/SousMenuContacts";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
 import { nomLangue } from "@/components/TableContacts";
-import MenuCases from "@/components/MenuCases";
+import MenuCases, { type Choix } from "@/components/MenuCases";
 
 function Segments() {
   const { mandat } = useMandat();
@@ -12,7 +12,7 @@ function Segments() {
   const [filtre, setFiltre] = useState({ source: "investors", canal: "email",
     pays: "", langues: "", secteur: "" });
   const [paysDispo, setPaysDispo] = useState<{ VALEUR: string; N: number }[]>([]);
-  const [secteurs, setSecteurs] = useState<{ familles: Choix[]; autres: Choix[] }>(
+  const [secteurs, setSecteurs] = useState<{ familles: Required<Choix>[]; autres: Required<Choix>[] }>(
     { familles: [], autres: [] });
   const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
   useEffect(() => {
