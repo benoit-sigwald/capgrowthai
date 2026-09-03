@@ -3,41 +3,7 @@ import Coquille from "@/components/Coquille";
 import SousMenuContacts from "@/components/SousMenuContacts";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
 import { nomLangue } from "@/components/TableContacts";
-
-type Choix = { id: string; libelle: string; n: number };
-
-/* Un menu deroulant a cocher, comme ailleurs dans l'outil. */
-function Menu({ titre, ouvert, surOuvrir, surVider, children }: {
-  titre: string; ouvert: boolean; surOuvrir: () => void;
-  surVider?: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div style={{ position: "relative" }}>
-      <button className="btn" onClick={surOuvrir}>{titre}</button>
-      {ouvert && (
-        <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
-          background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-          boxShadow: "var(--shadow)", padding: 10, minWidth: 260, maxHeight: 320,
-          overflowY: "auto" }}>
-          {children}
-          {surVider && (
-            <button className="btn" style={{ width: "100%", marginTop: 8 }}
-              onClick={surVider}>Tout décocher</button>)}
-        </div>)}
-    </div>);
-}
-
-function Case({ libelle, n, coche, surClic }: {
-  libelle: string; n: number; coche: boolean; surClic: () => void;
-}) {
-  return (
-    <label style={{ display: "flex", gap: 6, alignItems: "center", padding: "3px 0",
-      fontSize: 11, cursor: "pointer" }}>
-      <input type="checkbox" checked={coche} onChange={surClic} />
-      <span style={{ flex: 1 }}>{libelle}</span>
-      <span style={{ color: "var(--ink-3)" }}>{n.toLocaleString("fr-FR")}</span>
-    </label>);
-}
+import MenuCases from "@/components/MenuCases";
 
 function Segments() {
   const { mandat } = useMandat();
@@ -48,8 +14,6 @@ function Segments() {
   const [paysDispo, setPaysDispo] = useState<{ VALEUR: string; N: number }[]>([]);
   const [secteurs, setSecteurs] = useState<{ familles: Choix[]; autres: Choix[] }>(
     { familles: [], autres: [] });
-  const [ouvert, setOuvert] = useState<"" | "pays" | "secteur">("");
-  const [chercheSecteur, setChercheSecteur] = useState("");
   const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
   useEffect(() => {
     fetch("/capgrowth/api/langues").then(r => r.json())
@@ -104,41 +68,19 @@ function Segments() {
       {/* Pays et type d'entreprise : a cocher, avec le nombre de fiches que
           chaque case represente. Un filtre sans compteur oblige a essayer pour
           savoir ce qu'il vaut. */}
-      <Menu titre={listeDe("pays").length
-              ? `Pays : ${listeDe("pays").join(", ")}` : "Tous les pays"}
-        ouvert={ouvert === "pays"} surOuvrir={() => setOuvert(ouvert === "pays" ? "" : "pays")}
-        surVider={listeDe("pays").length ? () => setFiltre({ ...filtre, pays: "" }) : undefined}>
-        {paysDispo.map(p => (
-          <Case key={p.VALEUR} libelle={p.VALEUR} n={p.N}
-            coche={listeDe("pays").includes(p.VALEUR)}
-            surClic={() => basculer("pays", p.VALEUR)} />))}
-      </Menu>
+      <MenuCases titre={listeDe("pays").length
+          ? `Pays : ${listeDe("pays").join(", ")}` : "Tous les pays"}
+        choix={paysDispo.map(p => ({ id: p.VALEUR, libelle: p.VALEUR, n: p.N }))}
+        valeurs={listeDe("pays")}
+        surChange={v => setFiltre({ ...filtre, pays: v.join(",") })} />
 
-      <Menu titre={listeDe("secteur").length
-              ? `Type : ${listeDe("secteur").length} coché(s)` : "Tous les types d'entreprise"}
-        ouvert={ouvert === "secteur"}
-        surOuvrir={() => setOuvert(ouvert === "secteur" ? "" : "secteur")}
-        surVider={listeDe("secteur").length ? () => setFiltre({ ...filtre, secteur: "" }) : undefined}>
-        {secteurs.familles.map(f => (
-          <Case key={f.id} libelle={f.libelle} n={f.n} coche={listeDe("secteur").includes(f.id)}
-            surClic={() => basculer("secteur", f.id)} />))}
-        {secteurs.autres.length > 0 && (<>
-          <div style={{ borderTop: "1px solid var(--hair-soft)", margin: "8px 0 6px",
-            paddingTop: 6, fontSize: 10, color: "var(--ink-3)" }}>
-            Autres activités ({secteurs.autres.length})</div>
-          <input placeholder="chercher une activité…" value={chercheSecteur}
-            onChange={e => setChercheSecteur(e.target.value)}
-            style={{ width: "100%", marginBottom: 6 }} />
-          {secteurs.autres
-            .filter(a => !chercheSecteur
-              || a.libelle.toLowerCase().includes(chercheSecteur.toLowerCase()))
-            .slice(0, 40)
-            .map(a => (
-              <Case key={a.id} libelle={a.libelle} n={a.n}
-                coche={listeDe("secteur").includes(a.id)}
-                surClic={() => basculer("secteur", a.id)} />))}
-        </>)}
-      </Menu>
+      <MenuCases titre={listeDe("secteur").length
+          ? `Type : ${listeDe("secteur").length} coché(s)` : "Tous les types d'entreprise"}
+        choix={[...secteurs.familles, ...secteurs.autres]
+          .map(x => ({ id: x.id, libelle: x.libelle, n: x.n }))}
+        valeurs={listeDe("secteur")} recherche
+        surChange={v => setFiltre({ ...filtre, secteur: v.join(",") })} />
+
       <button className="btn bleu" onClick={creer}>Enregistrer le segment</button>
     </div>
     {/* La langue decide du gabarit qui partira : c'est le critere de segment

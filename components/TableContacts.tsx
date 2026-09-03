@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import MenuCases from "./MenuCases";
 
 export type Personne = {
   PERSON_KEY: string; SOURCE: string; FIRST_NAME: string | null; LAST_NAME: string | null;
@@ -54,17 +55,12 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
   const [page, setPage] = useState(0);
   // « joignable » par defaut : les 70 009 fiches de registre sans canal
   // masqueraient tout le reste. Lecon mesuree sur l'outil precedent.
-  const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable", langues: "" });
-  const [ouvertCanaux, setOuvertCanaux] = useState(false);
-  const [ouvertBases, setOuvertBases] = useState(false);
+  const [filtre, setFiltre] = useState({ q: "", source: "", canal: "joignable",
+    langues: "", pays: "", secteur: "" });
+  const [paysDispo, setPaysDispo] = useState<{ VALEUR: string; N: number }[]>([]);
+  const [secteurs, setSecteurs] = useState<{ id: string; libelle: string; n: number }[]>([]);
 
   const basesChoisies = filtre.source.split(",").map(x => x.trim()).filter(Boolean);
-  const basculerBase = (id: string) => {
-    const suite = basesChoisies.includes(id)
-      ? basesChoisies.filter(b => b !== id) : [...basesChoisies, id];
-    setFiltre({ ...filtre, source: suite.join(",") });
-    setPage(0);
-  };
 
   /*
    * « joignable » reste la valeur ecrite dans les segments enregistres : on la
@@ -74,26 +70,22 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
   const canauxChoisis = filtre.canal.split(",").map(c => c.trim()).filter(Boolean)
     .flatMap(c => (c === "joignable" ? CANAUX.map(x => x.id) : [c]))
     .filter(c => CANAUX.some(x => x.id === c));
-  const basculerCanal = (id: string) => {
-    const suite = canauxChoisis.includes(id)
-      ? canauxChoisis.filter(c => c !== id) : [...canauxChoisis, id];
-    setFiltre({ ...filtre, canal: suite.length === CANAUX.length ? "joignable" : suite.join(",") });
-    setPage(0);
-  };
   const [languesDispo, setLanguesDispo] = useState<{ LANGUE: string; N: number }[]>([]);
-  const [ouvertLangues, setOuvertLangues] = useState(false);
 
   useEffect(() => {
     fetch("/capgrowth/api/langues").then(r => r.json())
       .then(d => setLanguesDispo(d.rows || [])).catch(() => {});
+    fetch("/capgrowth/api/valeurs?champ=pays").then(r => r.json())
+      .then(d => setPaysDispo(d.rows || [])).catch(() => {});
+    // Familles d'abord, longue traine ensuite : le menu se cherche.
+    fetch("/capgrowth/api/valeurs?champ=secteur").then(r => r.json())
+      .then(d => setSecteurs([...(d.familles || []), ...(d.autres || [])])).catch(() => {});
   }, []);
 
+  const listeDe = (champ: "pays" | "secteur") =>
+    filtre[champ].split(",").map(x => x.trim()).filter(Boolean);
+
   const choisies = filtre.langues ? filtre.langues.split(",").filter(Boolean) : [];
-  const basculerLangue = (code: string) => {
-    const n = choisies.includes(code) ? choisies.filter(c => c !== code) : [...choisies, code];
-    setFiltre({ ...filtre, langues: n.join(",") });
-    setPage(0);
-  };
 
   const charger = useCallback(() => {
     const u = new URLSearchParams({ ...filtre, page: String(page) });
@@ -108,88 +100,48 @@ export default function TableContacts({ onOuvrir, selection, surSelection, surPa
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <input placeholder="Nom, société, e-mail…" value={filtre.q}
           onChange={e => { setFiltre({ ...filtre, q: e.target.value }); setPage(0); }} style={{ width: 260 }} />
-        {/* Les bases se cochent aussi : filtrer « Investisseurs » masquait en
-            silence les 1 856 adresses du referentiel prospects. */}
-        <div style={{ position: "relative" }}>
-          <button className="btn" onClick={() => setOuvertBases(o => !o)}>
-            {basesChoisies.length === 0 ? "Toutes les bases"
-              : basesChoisies.map(b => BASES.find(x => x.id === b)?.libelle).join(" ou ")}
-          </button>
-          {ouvertBases && (
-            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
-              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-              boxShadow: "var(--shadow)", padding: 10, minWidth: 200 }}>
-              {BASES.map(b => (
-                <label key={b.id} style={{ display: "flex", gap: 6, alignItems: "center",
-                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
-                  <input type="checkbox" checked={basesChoisies.includes(b.id)}
-                    onChange={() => basculerBase(b.id)} />
-                  {b.libelle}
-                </label>))}
-              {basesChoisies.length > 0 && (
-                <button className="btn" style={{ width: "100%", marginTop: 8 }}
-                  onClick={() => { setFiltre({ ...filtre, source: "" }); setPage(0); }}>
-                  Toutes les bases</button>)}
-            </div>)}
-        </div>
-        {/* Les canaux se cochent, et se cumulent en OU : « qui puis-je
-            atteindre par e-mail OU par telephone » demandait deux recherches. */}
-        <div style={{ position: "relative" }}>
-          <button className="btn" onClick={() => setOuvertCanaux(o => !o)}>
-            {canauxChoisis.length === 0 ? "Tout le référentiel"
-              : canauxChoisis.length === CANAUX.length ? "Joignables"
-              : canauxChoisis.map(c => CANAUX.find(x => x.id === c)?.libelle).join(" ou ")}
-          </button>
-          {ouvertCanaux && (
-            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
-              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-              boxShadow: "var(--shadow)", padding: 10, minWidth: 190 }}>
-              {CANAUX.map(c => (
-                <label key={c.id} style={{ display: "flex", gap: 6, alignItems: "center",
-                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
-                  <input type="checkbox" checked={canauxChoisis.includes(c.id)}
-                    onChange={() => basculerCanal(c.id)} />
-                  {c.libelle}
-                </label>))}
-              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                <button className="btn" style={{ flex: 1 }}
-                  onClick={() => { setFiltre({ ...filtre, canal: "joignable" }); setPage(0); }}>
-                  Tous</button>
-                <button className="btn" style={{ flex: 1 }}
-                  onClick={() => { setFiltre({ ...filtre, canal: "" }); setPage(0); }}>
-                  Aucun</button>
-              </div>
-              <span style={{ fontSize: 10, color: "var(--ink-3)", display: "block", marginTop: 6 }}>
-                Plusieurs canaux cochés : les contacts joignables par l&apos;un
-                <b> ou</b> l&apos;autre.
-              </span>
-            </div>)}
-        </div>
-        <div style={{ position: "relative" }}>
-          <button className="btn" onClick={() => setOuvertLangues(o => !o)}>
-            {choisies.length
-              ? `Langues : ${choisies.map(nomLangue).join(", ")}`
-              : "Toutes les langues"}
-          </button>
-          {ouvertLangues && (
-            <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, marginTop: 4,
-              background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-              boxShadow: "var(--shadow)", padding: 10, minWidth: 190, maxHeight: 280,
-              overflowY: "auto" }}>
-              {languesDispo.map(l => (
-                <label key={l.LANGUE} style={{ display: "flex", gap: 6, alignItems: "center",
-                  padding: "3px 0", fontSize: 11, cursor: "pointer" }}>
-                  <input type="checkbox" checked={choisies.includes(l.LANGUE)}
-                    onChange={() => basculerLangue(l.LANGUE)} />
-                  {nomLangue(l.LANGUE)}
-                  <span style={{ color: "var(--ink-3)", marginLeft: "auto" }}>{l.N}</span>
-                </label>))}
-              {choisies.length > 0 && (
-                <button className="btn" style={{ width: "100%", marginTop: 6 }}
-                  onClick={() => { setFiltre({ ...filtre, langues: "" }); setPage(0); }}>
-                  Tout décocher</button>)}
-            </div>)}
-        </div>
+        {/* Les bases se cochent : filtrer « Investisseurs » masquait en silence
+            les 1 856 adresses du referentiel prospects. */}
+        <MenuCases titre={basesChoisies.length === 0 ? "Toutes les bases"
+            : basesChoisies.map(b => BASES.find(x => x.id === b)?.libelle).join(" ou ")}
+          choix={BASES.map(b => ({ id: b.id, libelle: b.libelle }))}
+          valeurs={basesChoisies}
+          surChange={v => { setFiltre({ ...filtre, source: v.join(",") }); setPage(0); }} />
+
+        {/* Les canaux se cumulent en OU : « qui puis-je atteindre par e-mail OU
+            par telephone » demandait deux recherches. */}
+        <MenuCases titre={canauxChoisis.length === 0 ? "Tout le référentiel"
+            : canauxChoisis.length === CANAUX.length ? "Joignables"
+            : canauxChoisis.map(c => CANAUX.find(x => x.id === c)?.libelle).join(" ou ")}
+          choix={CANAUX.map(c => ({ id: c.id, libelle: c.libelle }))}
+          valeurs={canauxChoisis}
+          surChange={v => {
+            // « joignable » quand les trois sont cochés : c'est la valeur que
+            // portent les segments enregistrés, on la garde telle quelle.
+            setFiltre({ ...filtre,
+              canal: v.length === CANAUX.length ? "joignable" : v.join(",") });
+            setPage(0);
+          }} />
+
+        <MenuCases titre={choisies.length
+            ? `Langues : ${choisies.map(nomLangue).join(", ")}` : "Toutes les langues"}
+          choix={languesDispo.map(l => ({ id: l.LANGUE, libelle: nomLangue(l.LANGUE), n: l.N }))}
+          valeurs={choisies}
+          surChange={v => { setFiltre({ ...filtre, langues: v.join(",") }); setPage(0); }} />
+
+        <MenuCases
+          titre={listeDe("pays").length ? `Pays : ${listeDe("pays").join(", ")}` : "Tous les pays"}
+          choix={paysDispo.map(p => ({ id: p.VALEUR, libelle: p.VALEUR, n: p.N }))}
+          valeurs={listeDe("pays")}
+          surChange={v => { setFiltre({ ...filtre, pays: v.join(",") }); setPage(0); }} />
+
+        <MenuCases
+          titre={listeDe("secteur").length
+            ? `Type : ${listeDe("secteur").length} coché(s)` : "Tous les types d'entreprise"}
+          choix={secteurs.map(x => ({ id: x.id, libelle: x.libelle, n: x.n }))}
+          valeurs={listeDe("secteur")} recherche
+          surChange={v => { setFiltre({ ...filtre, secteur: v.join(",") }); setPage(0); }} />
+
         <span style={{ alignSelf: "center", color: "var(--ink-3)" }}>
           {total.toLocaleString("fr-FR")} contact{total > 1 ? "s" : ""}</span>
       </div>
