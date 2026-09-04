@@ -222,6 +222,141 @@ function BoiteEnvoi({ c, fenetre, surFermer, surEnvoye }: {
     </div>);
 }
 
+type Jour = { jour: string; ouvert: boolean; de: string | null; a: string | null;
+              envois: number; restants: number };
+type Projection = { restants: number; cadence_min: number | null; fenetre: string;
+                    plafond: number; par_jour_plein?: number; jours: Jour[];
+                    fin: string | null; manuel: boolean };
+
+const JOUR_FR = (iso: string) => new Date(iso + "T12:00:00")
+  .toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+
+/*
+ * The rhythm, editable, with what it implies.
+ *
+ * A cadence is not readable on its own: "one every five minutes" says nothing
+ * about whether the campaign lands in three days or in three weeks. That
+ * depends on the window, on working days, on public holidays and on the
+ * domain's daily cap — four things nobody holds in their head at once.
+ *
+ * So the projection is recomputed on every change, BEFORE saving. The point is
+ * not to display a plan; it is to make two settings comparable at the moment
+ * of choosing between them.
+ *
+ * The calculation comes from the mailer. It owns the windows and the holiday
+ * calendar, and a second implementation here would eventually disagree with
+ * the one that actually sends.
+ */
+function BoiteRythme({ c, fenetres, surFermer, surChange }: {
+  c: Ligne; fenetres: Fenetre[]; surFermer: () => void;
+  surChange: (message: string) => void;
+}) {
+  const id = String(c.CAMPAIGN_ID);
+  const [cadence, setCadence] = useState<number | null>(Number(c.CADENCE_MIN) || null);
+  const [fenetre, setFenetre] = useState(String(c.FENETRE || "ouvrees"));
+  const [proj, setProj] = useState<Projection | null>(null);
+  const [erreur, setErreur] = useState("");
+  const [occupe, setOccupe] = useState(false);
+
+  // Recomputed on every click. The server holds the calendar; asking it again
+  // costs one request and removes any chance of the screen inventing a date.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (cadence) params.set("cadence", String(cadence));
+    params.set("fenetre", fenetre);
+    fetch(`/capgrowth/api/campagnes/${encodeURIComponent(id)}/rythme?${params}`)
+      .then(r => r.json()).then(setProj).catch(() => setProj(null));
+  }, [id, cadence, fenetre]);
+
+  async function enregistrer() {
+    setOccupe(true); setErreur("");
+    const r = await fetch(`/capgrowth/api/campagnes/${encodeURIComponent(id)}/rythme`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cadence_min: cadence, fenetre }) });
+    const j = await r.json().catch(() => ({}));
+    setOccupe(false);
+    if (!r.ok) { setErreur(j.erreur || "Modification refusée."); return; }
+    surChange(cadence
+      ? `Rythme enregistré : 1 message / ${cadence} min.`
+      : "Campagne repassée en envoi manuel.");
+    surFermer();
+  }
+
+  const f = fenetres.find(x => x.id === fenetre);
+  const ouverts = (proj?.jours || []).filter(j => j.ouvert);
+
+  return (
+    <div style={{ position: "absolute", zIndex: 30, left: 0, top: "100%", marginTop: 4,
+      background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
+      boxShadow: "var(--shadow)", padding: 14, width: 430, textAlign: "left" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Rythme d’envoi</div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <select value={cadence ?? ""} style={{ flex: 1 }}
+          onChange={e => setCadence(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">Manuel</option>
+          {[5, 15, 30, 60].map(n =>
+            <option key={n} value={n}>1 message / {n} min</option>)}
+        </select>
+        <select value={fenetre} disabled={!cadence} style={{ flex: 1.4 }}
+          onChange={e => setFenetre(e.target.value)}>
+          {fenetres.map(x => <option key={x.id} value={x.id}>
+            {LIBELLES[x.id] || x.id}{heuresDe(x)}</option>)}
+        </select>
+      </div>
+
+      {!cadence && (
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 10 }}>
+          En manuel, rien ne part tant que personne ne clique. Les {Number(c.EN_ATTENTE) || 0}{" "}
+          message(s) en attente restent en attente.
+        </div>)}
+
+      {cadence && proj && !proj.manuel && (<>
+        <div style={{ display: "flex", gap: 16, marginBottom: 8, flexWrap: "wrap" }}>
+          <div><b style={{ fontSize: 15 }}>{proj.par_jour_plein}</b>
+            <span style={{ fontSize: 10, color: "var(--ink-3)" }}> / jour ouvert</span></div>
+          <div><b style={{ fontSize: 15 }}>{proj.restants}</b>
+            <span style={{ fontSize: 10, color: "var(--ink-3)" }}> restants</span></div>
+          <div><b style={{ fontSize: 15 }}>{proj.fin ? JOUR_FR(proj.fin) : "—"}</b>
+            <span style={{ fontSize: 10, color: "var(--ink-3)" }}> fin estimée</span></div>
+        </div>
+        <div style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 8 }}>
+          Plafond du domaine : {proj.plafond}/jour
+          {proj.par_jour_plein && proj.par_jour_plein < proj.plafond
+            ? " — c’est la cadence qui limite, pas lui."
+            : " — c’est lui qui limite, pas la cadence."}
+        </div>
+        <div style={{ maxHeight: 190, overflowY: "auto", border: "1px solid var(--hair-soft)",
+          borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <tbody>{(proj.jours || []).map(j => (
+              <tr key={j.jour} style={{ borderBottom: "1px solid var(--hair-soft)",
+                color: j.ouvert ? "inherit" : "var(--ink-3)" }}>
+                <td style={{ padding: "4px 8px" }}>{JOUR_FR(j.jour)}</td>
+                <td style={{ padding: "4px 8px", color: "var(--ink-3)" }}>
+                  {j.ouvert ? `${j.de} → ${j.a}` : "fenêtre fermée"}</td>
+                <td style={{ padding: "4px 8px", textAlign: "right" }}>{j.envois}</td>
+                <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--ink-3)" }}>
+                  {j.restants}</td>
+              </tr>))}
+            </tbody>
+          </table>
+        </div>
+        {ouverts.length === 0 && (
+          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
+            Cette fenêtre ne s’ouvre pas dans les 120 prochains jours.</div>)}
+      </>)}
+
+      {erreur && <div style={{ fontSize: 11, color: "var(--danger, #b00)", margin: "8px 0" }}>
+        {erreur}</div>}
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button className="btn bleu" disabled={occupe} onClick={enregistrer}>
+          {occupe ? "…" : "Enregistrer"}</button>
+        <button className="btn" disabled={occupe} onClick={surFermer}>Annuler</button>
+      </div>
+    </div>);
+}
+
 function Campagnes() {
   const { mandat } = useMandat();
   const [rows, setRows] = useState<Ligne[]>([]);
@@ -230,6 +365,7 @@ function Campagnes() {
   const [rafraichit, setRafraichit] = useState(false);
   const [boite, setBoite] = useState<string | null>(null);
   const [fenetres, setFenetres] = useState<Record<string, Fenetre>>({});
+  const [rythme, setRythme] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/capgrowth/api/fenetres").then(r => r.json())
@@ -280,10 +416,22 @@ function Campagnes() {
                 <td style={{ padding: "8px 12px", color: "var(--ink-2)" }}>{c.EXPEDITEUR_EMAIL || "—"}</td>
                 {/* Le rythme etait enregistre mais invisible : on ne pouvait pas
                     savoir depuis cet ecran qu'une campagne partait toute seule. */}
-                <td style={{ padding: "8px 12px", color: "var(--ink-2)" }}>
-                  {Number(c.CADENCE_MIN) > 0
-                    ? <span className="pill">1 / {c.CADENCE_MIN} min · {LIBELLES[String(c.FENETRE)] || c.FENETRE}{heuresDe(fenetres[String(c.FENETRE)])}</span>
-                    : <span style={{ color: "var(--ink-3)" }}>manuel</span>}
+                <td style={{ padding: "8px 12px", color: "var(--ink-2)", position: "relative" }}>
+                  {/* Cliquable : le rythme se lit ET se change ici, avec ce
+                      qu'il implique. Le laisser en simple etiquette obligeait a
+                      supprimer la campagne pour corriger une cadence. */}
+                  <button className="pill" style={{ cursor: "pointer", border: "none",
+                    font: "inherit", background: Number(c.CADENCE_MIN) > 0 ? undefined : "transparent",
+                    color: Number(c.CADENCE_MIN) > 0 ? undefined : "var(--ink-3)" }}
+                    title="Modifier le rythme et voir la projection"
+                    onClick={() => setRythme(rythme === id ? null : id)}>
+                    {Number(c.CADENCE_MIN) > 0
+                      ? `1 / ${c.CADENCE_MIN} min · ${LIBELLES[String(c.FENETRE)] || c.FENETRE}${heuresDe(fenetres[String(c.FENETRE)])}`
+                      : "manuel"}
+                  </button>
+                  {rythme === id && <BoiteRythme c={c} fenetres={Object.values(fenetres)}
+                    surFermer={() => setRythme(null)}
+                    surChange={m => { setMsg(m); charger(); }} />}
                 </td>
                 <td style={{ padding: "8px 12px" }}>{c.TOTAL_TARGETED}</td>
                 <td style={{ padding: "8px 12px" }}>{c.ENVOYES}</td>
