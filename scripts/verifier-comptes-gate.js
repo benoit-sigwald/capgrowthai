@@ -34,6 +34,16 @@ const ALERTER = process.argv.includes('--alerter');
  */
 const ESSAI = process.argv.includes('--essai');
 
+/*
+ * Les comptes de service, hors GATE_ : ceux sous lesquels les applications se
+ * connectent a la base. Un GATE_ verrouille prive un site de son tracker ;
+ * PROSPECTS verrouille prive capgrowth de TOUTE connexion — meme panne muette
+ * que GATE_877, page ORA-01017 a la place de l'appli. INVESTORS porte le
+ * routeur, donc aussi le canal d'alerte : s'il tombe, l'alerte se tait avec
+ * lui, raison de plus pour le voir venir par l'expiration.
+ */
+const SERVICES = { PROSPECTS: 'capgrowth', INVESTORS: 'routeur / mailer' };
+
 async function main() {
   const cn = await oracledb.getConnection({
     user: 'ADMIN', password: process.env.AP,
@@ -57,6 +67,7 @@ async function main() {
             TRUNC(EXPIRY_DATE - SYSDATE) JOURS_AVANT_EXPIRATION
        FROM DBA_USERS
       WHERE SUBSTR(USERNAME, 1, 5) = 'GATE_'
+         OR USERNAME IN (${Object.keys(SERVICES).map(u => `'${u}'`).join(', ')})
       ORDER BY USERNAME`);
   await cn.close();
 
@@ -65,8 +76,10 @@ async function main() {
   const bientot = comptes.filter(c => c.ACCOUNT_STATUS === 'OPEN'
     && c.JOURS_AVANT_EXPIRATION !== null && c.JOURS_AVANT_EXPIRATION <= 21);
 
-  console.log(`${comptes.length} comptes GATE_ : ${comptes.length - fermes.length} ouverts, `
-            + `${fermes.length} hors service`);
+  const nbServices = comptes.filter(c => c.USERNAME in SERVICES).length;
+  console.log(`${comptes.length} comptes surveilles `
+            + `(${comptes.length - nbServices} GATE_ + ${nbServices} de service) : `
+            + `${comptes.length - fermes.length} ouverts, ${fermes.length} hors service`);
   for (const c of fermes) console.log(`  FERME   ${c.USERNAME} — ${c.ACCOUNT_STATUS}`);
   for (const c of bientot) console.log(`  EXPIRE  ${c.USERNAME} — dans ${c.JOURS_AVANT_EXPIRATION} j`);
 
@@ -77,9 +90,10 @@ async function main() {
   if (!fermes.length && !bientot.length) return 0;
   if (!ALERTER) return fermes.length ? 1 : 0;
 
+  const nom = c => SERVICES[c.USERNAME] ? `${c.USERNAME} (${SERVICES[c.USERNAME]})` : c.USERNAME;
   const lignes = [
-    ...fermes.map(c => `${c.USERNAME} : ${c.ACCOUNT_STATUS}`),
-    ...bientot.map(c => `${c.USERNAME} : expire dans ${c.JOURS_AVANT_EXPIRATION} j`),
+    ...fermes.map(c => `${nom(c)} : ${c.ACCOUNT_STATUS}`),
+    ...bientot.map(c => `${nom(c)} : expire dans ${c.JOURS_AVANT_EXPIRATION} j`),
   ];
   // Le message dit quoi faire : une alerte qui laisse chercher la cause fait
   // perdre le temps qu'elle etait censee gagner.
@@ -89,7 +103,7 @@ async function main() {
     + ' deverrouiller — l inverse reverrouille dans l heure.';
 
   const sujet = ESSAI ? 'Essai du canal — comptes GATE_'
-                      : `Comptes GATE_ : ${lignes.length} anomalie(s)`;
+                      : `Comptes surveilles : ${lignes.length} anomalie(s)`;
 
   /*
    * Un seul canal : le courriel par le routeur.
