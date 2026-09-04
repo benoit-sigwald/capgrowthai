@@ -36,9 +36,49 @@ function Garde({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/*
+ * Le beacon du tracker.
+ *
+ * Les autres sites du parc chargent /gate/t.js, qui emet une visite au
+ * chargement de la page. Ici ce script ne verrait que la premiere : capgrowth
+ * navigue cote client, et le tracker n'afficherait qu'une visite par session,
+ * quel que soit le nombre d'ecrans parcourus. On emet donc a chaque route.
+ *
+ * arx-consulting.com sert /gate ET /capgrowth : meme origine, pas de CORS.
+ *
+ * L'echec est silencieux, et c'est voulu : un compteur de visites n'a aucune
+ * raison d'empecher l'outil de fonctionner.
+ */
+function Beacon() {
+  const routeur = useRouter();
+  useEffect(() => {
+    const emettre = () => {
+      // On lit l'URL du navigateur plutot que celle du routeur : elle porte le
+      // prefixe /capgrowth, ce qui rend les pages lisibles dans le tracker a
+      // cote de celles des autres sites.
+      const corps = JSON.stringify({
+        site: "capgrowth",
+        page: location.pathname + location.search,
+        ref: document.referrer || "",
+        lang: navigator.language || "",
+        screen: `${screen.width}x${screen.height}`,
+      });
+      try {
+        if (navigator.sendBeacon) navigator.sendBeacon("/gate/t", corps);
+        else fetch("/gate/t", { method: "POST", body: corps, keepalive: true });
+      } catch { /* le suivi ne doit jamais casser la navigation */ }
+    };
+    emettre();
+    routeur.events.on("routeChangeComplete", emettre);
+    return () => routeur.events.off("routeChangeComplete", emettre);
+  }, [routeur]);
+  return null;
+}
+
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <SessionProvider session={pageProps.session} basePath="/capgrowth/api/auth">
+      <Beacon />
       <Garde><Component {...pageProps} /></Garde>
     </SessionProvider>
   );
