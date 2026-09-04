@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Coquille from "@/components/Coquille";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
@@ -287,10 +287,17 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--hair)",
-      borderRadius: 12, boxShadow: "var(--shadow)", padding: 14, width: 430,
+      borderRadius: 12, boxShadow: "var(--shadow)", padding: 18,
       textAlign: "left" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Rythme d’envoi</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
+        Rythme d’envoi — {String(c.NAME)}</div>
 
+      {/* Deux colonnes : le reglage a gauche, ce qu'il produit a droite. Ce
+          sont deux lectures differentes du meme choix, et les empiler obligeait
+          a faire defiler pour comparer une cadence a sa date de fin. */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 360px) 1fr",
+        gap: 20, alignItems: "start" }}>
+      <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <select value={cadence ?? ""} style={{ flex: 1 }}
           onChange={e => setCadence(e.target.value ? Number(e.target.value) : null)}>
@@ -311,8 +318,18 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
           message(s) en attente restent en attente.
         </div>)}
 
+      {erreur && <div style={{ fontSize: 11, color: "var(--danger, #b00)", margin: "8px 0" }}>
+        {erreur}</div>}
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <button className="btn bleu" disabled={occupe} onClick={enregistrer}>
+          {occupe ? "…" : "Enregistrer"}</button>
+        <button className="btn" disabled={occupe} onClick={surFermer}>Annuler</button>
+      </div>
+      </div>
+
+      <div>
       {cadence && proj && !proj.manuel && (<>
-        <div style={{ display: "flex", gap: 16, marginBottom: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 22, marginBottom: 10, flexWrap: "wrap" }}>
           <div><b style={{ fontSize: 15 }}>{proj.par_jour_plein}</b>
             <span style={{ fontSize: 10, color: "var(--ink-3)" }}> / jour ouvert</span></div>
           <div><b style={{ fontSize: 15 }}>{proj.restants}</b>
@@ -326,9 +343,16 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
             ? " — c’est la cadence qui limite, pas lui."
             : " — c’est lui qui limite, pas la cadence."}
         </div>
-        <div style={{ maxHeight: 190, overflowY: "auto", border: "1px solid var(--hair-soft)",
+        <div style={{ maxHeight: 300, overflowY: "auto", border: "1px solid var(--hair-soft)",
           borderRadius: 8 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <thead><tr>{[["Jour", "left"], ["Fenêtre utilisable", "left"],
+                        ["Envois", "right"], ["Restants", "right"]].map(([h, al]) =>
+              <th key={h} style={{ textAlign: al as "left" | "right", padding: "5px 8px",
+                fontSize: 10, fontWeight: 500, color: "var(--ink-3)",
+                position: "sticky", top: 0, background: "var(--card)",
+                borderBottom: "1px solid var(--hair)" }}>{h}</th>)}
+            </tr></thead>
             <tbody>{(proj.jours || []).map(j => (
               <tr key={j.jour} style={{ borderBottom: "1px solid var(--hair-soft)",
                 color: j.ouvert ? "inherit" : "var(--ink-3)" }}>
@@ -346,13 +370,9 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
           <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>
             Cette fenêtre ne s’ouvre pas dans les 120 prochains jours.</div>)}
       </>)}
-
-      {erreur && <div style={{ fontSize: 11, color: "var(--danger, #b00)", margin: "8px 0" }}>
-        {erreur}</div>}
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="btn bleu" disabled={occupe} onClick={enregistrer}>
-          {occupe ? "…" : "Enregistrer"}</button>
-        <button className="btn" disabled={occupe} onClick={surFermer}>Annuler</button>
+      {cadence && !proj && <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+        Calcul de la projection…</div>}
+      </div>
       </div>
     </div>);
 }
@@ -371,8 +391,9 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
  * The backdrop is not decoration: without something to click, a panel opened by
  * mistake can only be closed by finding its Annuler button.
  */
-function Surcouche({ ancre, surFermer, children }: {
-  ancre: DOMRect; surFermer: () => void; children: React.ReactNode;
+function Surcouche({ ancre, cadre, surFermer, children }: {
+  ancre: DOMRect; cadre?: DOMRect | null; surFermer: () => void;
+  children: React.ReactNode;
 }) {
   useEffect(() => {
     const auClavier = (e: KeyboardEvent) => { if (e.key === "Escape") surFermer(); };
@@ -380,11 +401,20 @@ function Surcouche({ ancre, surFermer, children }: {
     return () => window.removeEventListener("keydown", auClavier);
   }, [surFermer]);
 
-  // Kept inside the viewport: anchored under the button, pushed back to the
-  // left when it would overflow, flipped above when the bottom has no room.
-  const largeur = 440, marge = 12;
-  const gauche = Math.max(marge,
-    Math.min(ancre.left, window.innerWidth - largeur - marge));
+  /*
+   * With a `cadre`, the panel spans that element — the table — instead of
+   * hanging off the button. A projection is a calendar and four figures; at
+   * 430 px they stack into a column that has to be scrolled to be read, when
+   * the row it belongs to is already the width of the screen.
+   *
+   * Without one, it stays anchored: pushed left when it would overflow the
+   * right edge, flipped above the button when the space below is too small.
+   */
+  const marge = 12;
+  const largeur = cadre ? cadre.width : 440;
+  const gauche = cadre
+    ? cadre.left
+    : Math.max(marge, Math.min(ancre.left, window.innerWidth - largeur - marge));
   const placeEnBas = window.innerHeight - ancre.bottom;
   const style: React.CSSProperties = placeEnBas > 320
     ? { top: ancre.bottom + 4 }
@@ -392,7 +422,7 @@ function Surcouche({ ancre, surFermer, children }: {
 
   return (<>
     <div onClick={surFermer} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-    <div style={{ position: "fixed", left: gauche, zIndex: 41,
+    <div style={{ position: "fixed", left: gauche, width: largeur, zIndex: 41,
       maxHeight: "80vh", overflowY: "auto", ...style }}>{children}</div>
   </>);
 }
@@ -407,6 +437,7 @@ function Campagnes() {
   const [boite, setBoite] = useState<Ouvert | null>(null);
   const [fenetres, setFenetres] = useState<Record<string, Fenetre>>({});
   const [rythme, setRythme] = useState<Ouvert | null>(null);
+  const cadreTable = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/capgrowth/api/fenetres").then(r => r.json())
@@ -440,7 +471,7 @@ function Campagnes() {
       }}>{rafraichit ? "…" : "Rafraîchir les compteurs"}</button>
       {msg && <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{msg}</span>}
     </div>
-    <div style={{ overflowX: "auto", background: "var(--card)", borderRadius: "var(--r)",
+    <div ref={cadreTable} style={{ overflowX: "auto", background: "var(--card)", borderRadius: "var(--r)",
       border: "1px solid var(--hair-soft)", boxShadow: "var(--shadow)" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
         <thead><tr>{["Campagne", "Expéditeur", "Rythme", "Ciblées", "Envoyés", "En attente",
@@ -503,7 +534,8 @@ function Campagnes() {
     {/* Rendues HORS du tableau : a l'interieur, son overflow les rognait. */}
     {rythme && (() => {
       const c = rows.find(x => String(x.CAMPAIGN_ID) === rythme.id);
-      return c ? <Surcouche ancre={rythme.rect} surFermer={() => setRythme(null)}>
+      return c ? <Surcouche ancre={rythme.rect} surFermer={() => setRythme(null)}
+        cadre={cadreTable.current?.getBoundingClientRect()}>
         <BoiteRythme c={c} fenetres={Object.values(fenetres)}
           surFermer={() => setRythme(null)}
           surChange={m => { setMsg(m); charger(); }} />
