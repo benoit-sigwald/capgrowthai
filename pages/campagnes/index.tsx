@@ -194,9 +194,9 @@ function BoiteEnvoi({ c, fenetre, surFermer, surEnvoye }: {
   }
 
   return (
-    <div style={{ position: "absolute", zIndex: 30, right: 0, top: "100%", marginTop: 4,
-      background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-      boxShadow: "var(--shadow)", padding: 14, width: 290, textAlign: "left" }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--hair)",
+      borderRadius: 12, boxShadow: "var(--shadow)", padding: 14, width: 290,
+      textAlign: "left" }}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Combien envoyer ?</div>
       {cadence > 0 && (
         <div className="pill" style={{ marginBottom: 8, display: "block" }}>
@@ -286,9 +286,9 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
   const ouverts = (proj?.jours || []).filter(j => j.ouvert);
 
   return (
-    <div style={{ position: "absolute", zIndex: 30, left: 0, top: "100%", marginTop: 4,
-      background: "var(--card)", border: "1px solid var(--hair)", borderRadius: 12,
-      boxShadow: "var(--shadow)", padding: 14, width: 430, textAlign: "left" }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--hair)",
+      borderRadius: 12, boxShadow: "var(--shadow)", padding: 14, width: 430,
+      textAlign: "left" }}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Rythme d’envoi</div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -357,15 +357,56 @@ function BoiteRythme({ c, fenetres, surFermer, surChange }: {
     </div>);
 }
 
+/*
+ * A layer that escapes the table.
+ *
+ * The list scrolls horizontally, and `overflow-x: auto` creates a clipping
+ * context: a panel positioned absolutely inside a cell is cut off by it — which
+ * is exactly what happened, the dialog appearing as a two-line sliver.
+ *
+ * So the panel is rendered outside the table and placed with `position: fixed`
+ * from the button's own rectangle. Fixed positioning ignores every ancestor's
+ * overflow, which is the whole point.
+ *
+ * The backdrop is not decoration: without something to click, a panel opened by
+ * mistake can only be closed by finding its Annuler button.
+ */
+function Surcouche({ ancre, surFermer, children }: {
+  ancre: DOMRect; surFermer: () => void; children: React.ReactNode;
+}) {
+  useEffect(() => {
+    const auClavier = (e: KeyboardEvent) => { if (e.key === "Escape") surFermer(); };
+    window.addEventListener("keydown", auClavier);
+    return () => window.removeEventListener("keydown", auClavier);
+  }, [surFermer]);
+
+  // Kept inside the viewport: anchored under the button, pushed back to the
+  // left when it would overflow, flipped above when the bottom has no room.
+  const largeur = 440, marge = 12;
+  const gauche = Math.max(marge,
+    Math.min(ancre.left, window.innerWidth - largeur - marge));
+  const placeEnBas = window.innerHeight - ancre.bottom;
+  const style: React.CSSProperties = placeEnBas > 320
+    ? { top: ancre.bottom + 4 }
+    : { bottom: Math.max(marge, window.innerHeight - ancre.top + 4) };
+
+  return (<>
+    <div onClick={surFermer} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+    <div style={{ position: "fixed", left: gauche, zIndex: 41,
+      maxHeight: "80vh", overflowY: "auto", ...style }}>{children}</div>
+  </>);
+}
+
 function Campagnes() {
   const { mandat } = useMandat();
   const [rows, setRows] = useState<Ligne[]>([]);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [rafraichit, setRafraichit] = useState(false);
-  const [boite, setBoite] = useState<string | null>(null);
+  type Ouvert = { id: string; rect: DOMRect };
+  const [boite, setBoite] = useState<Ouvert | null>(null);
   const [fenetres, setFenetres] = useState<Record<string, Fenetre>>({});
-  const [rythme, setRythme] = useState<string | null>(null);
+  const [rythme, setRythme] = useState<Ouvert | null>(null);
 
   useEffect(() => {
     fetch("/capgrowth/api/fenetres").then(r => r.json())
@@ -424,14 +465,12 @@ function Campagnes() {
                     font: "inherit", background: Number(c.CADENCE_MIN) > 0 ? undefined : "transparent",
                     color: Number(c.CADENCE_MIN) > 0 ? undefined : "var(--ink-3)" }}
                     title="Modifier le rythme et voir la projection"
-                    onClick={() => setRythme(rythme === id ? null : id)}>
+                    onClick={e => setRythme(rythme?.id === id ? null
+                      : { id, rect: e.currentTarget.getBoundingClientRect() })}>
                     {Number(c.CADENCE_MIN) > 0
                       ? `1 / ${c.CADENCE_MIN} min · ${LIBELLES[String(c.FENETRE)] || c.FENETRE}${heuresDe(fenetres[String(c.FENETRE)])}`
                       : "manuel"}
                   </button>
-                  {rythme === id && <BoiteRythme c={c} fenetres={Object.values(fenetres)}
-                    surFermer={() => setRythme(null)}
-                    surChange={m => { setMsg(m); charger(); }} />}
                 </td>
                 <td style={{ padding: "8px 12px" }}>{c.TOTAL_TARGETED}</td>
                 <td style={{ padding: "8px 12px" }}>{c.ENVOYES}</td>
@@ -441,13 +480,10 @@ function Campagnes() {
                 <td style={{ padding: "8px 12px" }}>{taux(Number(c.REPONDUS), Number(c.ENVOYES))}</td>
                 <td style={{ padding: "8px 12px" }}>{c.REBONDS ? <span className="pill crit">{c.REBONDS}</span> : "—"}</td>
                 <td style={{ padding: "8px 12px", position: "relative" }}>
-                  {Number(c.EN_ATTENTE) > 0 && <>
-                    <button className="btn" onClick={() => setBoite(boite === id ? null : id)}>
-                      Envoyer…</button>
-                    {boite === id && <BoiteEnvoi c={c} fenetre={fenetres[String(c.FENETRE)]}
-                      surFermer={() => setBoite(null)}
-                      surEnvoye={m => { setMsg(m); charger(); }} />}
-                  </>}
+                  {Number(c.EN_ATTENTE) > 0 &&
+                    <button className="btn" onClick={e => setBoite(boite?.id === id ? null
+                      : { id, rect: e.currentTarget.getBoundingClientRect() })}>
+                      Envoyer…</button>}
                 </td>
                 <td style={{ padding: "8px 12px" }}>
                   <button className="btn" onClick={() => setOuverte(ouverte === id ? null : id)}>
@@ -463,6 +499,25 @@ function Campagnes() {
         </tbody>
       </table>
     </div>
+
+    {/* Rendues HORS du tableau : a l'interieur, son overflow les rognait. */}
+    {rythme && (() => {
+      const c = rows.find(x => String(x.CAMPAIGN_ID) === rythme.id);
+      return c ? <Surcouche ancre={rythme.rect} surFermer={() => setRythme(null)}>
+        <BoiteRythme c={c} fenetres={Object.values(fenetres)}
+          surFermer={() => setRythme(null)}
+          surChange={m => { setMsg(m); charger(); }} />
+      </Surcouche> : null;
+    })()}
+
+    {boite && (() => {
+      const c = rows.find(x => String(x.CAMPAIGN_ID) === boite.id);
+      return c ? <Surcouche ancre={boite.rect} surFermer={() => setBoite(null)}>
+        <BoiteEnvoi c={c} fenetre={fenetres[String(c.FENETRE)]}
+          surFermer={() => setBoite(null)}
+          surEnvoye={m => { setMsg(m); charger(); }} />
+      </Surcouche> : null;
+    })()}
   </>);
 }
 
