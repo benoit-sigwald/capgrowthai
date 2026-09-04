@@ -4,12 +4,18 @@ import Coquille from "@/components/Coquille";
 import { MandatFournisseur, useMandat } from "@/lib/mandat";
 
 const taux = (n: number, d: number) => d ? `${n} (${Math.round(100 * n / d)} %)` : "—";
-// Short labels for the table cell. The mailer owns the real definitions; these
-// only have to fit in a column.
+// French labels for the table cell. The HOURS are not restated here — they
+// come from the mailer with the rest of the window, because it is the mailer
+// that actually decides when a message may leave. A second copy would drift,
+// and the column would then announce hours the scheduler does not honour.
 const LIBELLES: Record<string, string> = {
   ouvrees: "heures ouvrées", soir: "soirées",
   weekend: "week-end et fériés", continu: "sans restriction",
 };
+
+type Fenetre = { id: string; de: number; a: number };
+const heuresDe = (f?: Fenetre) =>
+  !f || (f.de === 0 && f.a === 24) ? "" : ` ${String(f.de).padStart(2, "0")}h–${String(f.a).padStart(2, "0")}h`;
 type Ligne = Record<string, string | number | null>;
 
 /*
@@ -155,8 +161,8 @@ function Panneau({ c, surFermer, surChange }: {
  * answer shown next to it: what is still pending, and what the domain's
  * warm-up allows today. Neither is guessable from the row.
  */
-function BoiteEnvoi({ c, surFermer, surEnvoye }: {
-  c: Ligne; surFermer: () => void;
+function BoiteEnvoi({ c, fenetre, surFermer, surEnvoye }: {
+  c: Ligne; fenetre?: Fenetre; surFermer: () => void;
   surEnvoye: (message: string) => void;
 }) {
   const enAttente = Number(c.EN_ATTENTE) || 0;
@@ -194,8 +200,9 @@ function BoiteEnvoi({ c, surFermer, surEnvoye }: {
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Combien envoyer ?</div>
       {cadence > 0 && (
         <div className="pill" style={{ marginBottom: 8, display: "block" }}>
-          Campagne cadencée : 1 message toutes les {cadence} min. Un envoi manuel
-          s’ajoute et décale le prochain tour.
+          Campagne cadencée : 1 message toutes les {cadence} min,
+          {" "}{LIBELLES[String(c.FENETRE)] || c.FENETRE}{heuresDe(fenetre)}.
+          Un envoi manuel s’ajoute et décale le prochain tour.
         </div>)}
       <input type="number" min={1} max={enAttente} autoFocus
         style={{ width: "100%", marginBottom: 6 }}
@@ -222,6 +229,13 @@ function Campagnes() {
   const [msg, setMsg] = useState("");
   const [rafraichit, setRafraichit] = useState(false);
   const [boite, setBoite] = useState<string | null>(null);
+  const [fenetres, setFenetres] = useState<Record<string, Fenetre>>({});
+
+  useEffect(() => {
+    fetch("/capgrowth/api/fenetres").then(r => r.json())
+      .then(d => setFenetres(Object.fromEntries(
+        (d.fenetres || []).map((f: Fenetre) => [f.id, f])))).catch(() => {});
+  }, []);
 
   const charger = useCallback(() => {
     if (!mandat) return;
@@ -268,7 +282,7 @@ function Campagnes() {
                     savoir depuis cet ecran qu'une campagne partait toute seule. */}
                 <td style={{ padding: "8px 12px", color: "var(--ink-2)" }}>
                   {Number(c.CADENCE_MIN) > 0
-                    ? <span className="pill">1 / {c.CADENCE_MIN} min · {LIBELLES[String(c.FENETRE)] || c.FENETRE}</span>
+                    ? <span className="pill">1 / {c.CADENCE_MIN} min · {LIBELLES[String(c.FENETRE)] || c.FENETRE}{heuresDe(fenetres[String(c.FENETRE)])}</span>
                     : <span style={{ color: "var(--ink-3)" }}>manuel</span>}
                 </td>
                 <td style={{ padding: "8px 12px" }}>{c.TOTAL_TARGETED}</td>
@@ -282,7 +296,8 @@ function Campagnes() {
                   {Number(c.EN_ATTENTE) > 0 && <>
                     <button className="btn" onClick={() => setBoite(boite === id ? null : id)}>
                       Envoyer…</button>
-                    {boite === id && <BoiteEnvoi c={c} surFermer={() => setBoite(null)}
+                    {boite === id && <BoiteEnvoi c={c} fenetre={fenetres[String(c.FENETRE)]}
+                      surFermer={() => setBoite(null)}
                       surEnvoye={m => { setMsg(m); charger(); }} />}
                   </>}
                 </td>
