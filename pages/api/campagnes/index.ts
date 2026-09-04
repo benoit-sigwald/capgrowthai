@@ -33,9 +33,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     // Le ciblage est le referentiel : reserve aux roles Arx.
     if (!contactsAutorises(p)) return res.status(403).json({ erreur: "creation reservee a Arx" });
-    const { nom, segment_id, liste_id, expediteur_id, limite, template_ids } =
+    const { nom, segment_id, liste_id, expediteur_id, limite, template_ids,
+            cadence_min, fenetre } =
       (req.body ?? {}) as { nom?: string; segment_id?: number; liste_id?: number;
-        expediteur_id?: number; limite?: number; template_ids?: string[] };
+        expediteur_id?: number; limite?: number; template_ids?: string[];
+        cadence_min?: number | null; fenetre?: string };
     if (!nom?.trim() || !expediteur_id || (!segment_id && !liste_id))
       return res.status(400).json({ erreur: "nom, expediteur_id et un segment OU une liste requis" });
     if (segment_id && liste_id)
@@ -75,6 +77,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Gabarits imposes : sans cela, deux gabarits actifs de meme langue se
       // departagent tout seuls et l'expediteur ignore lequel part.
         template_ids: Array.isArray(template_ids) ? template_ids : undefined,
+        /*
+         * Pacing. A null cadence means the campaign stays manual — the batch
+         * leaves when someone clicks, exactly as before. The scheduler only
+         * ever picks up campaigns that were explicitly given a rhythm, so
+         * adding this field cannot set existing work in motion by itself.
+         *
+         * The mailer validates both and refuses an unknown window rather than
+         * falling back to the default: a screen showing "evenings" while the
+         * campaign sends during office hours is worse than an error.
+         */
+        cadence_min: cadence_min ?? null,
+        fenetre: fenetre || undefined,
       });
     } catch (e) {
       // Un refus du routeur (gabarit absent, quota) est une reponse metier.

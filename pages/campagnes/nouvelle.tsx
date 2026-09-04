@@ -25,6 +25,15 @@ function Nouvelle() {
   const [listeId, setListeId] = useState(0);
   const [expediteurId, setExpediteurId] = useState(0);
   const [limite, setLimite] = useState(200);
+  /*
+   * Pacing. Manual by default — null cadence means the batch leaves when
+   * someone clicks, which is how every campaign has worked so far. Choosing a
+   * rhythm is a deliberate act, never a side effect of opening this page.
+   */
+  const [cadence, setCadence] = useState<number | null>(null);
+  const [fenetre, setFenetre] = useState("ouvrees");
+  const [fenetres, setFenetres] = useState<
+    { id: string; libelle: string; de: number; a: number; ouverte: boolean }[]>([]);
   // Un gabarit retenu par langue. Le moteur choisit la langue du contact ; a
   // nous de dire QUEL gabarit represente cette langue pour cette campagne.
   const [choix, setChoix] = useState<Record<string, string>>({});
@@ -32,6 +41,13 @@ function Nouvelle() {
   const langues = [...new Set(gabarits.map(g => String(g.LANGUAGE)))].sort();
   // Combien partiraient, si on preparait maintenant. Lu avant, pas apres.
   const [apercu, setApercu] = useState<{ cibles: number; nouveaux: number } | null>(null);
+
+  // Les fenetres viennent du moteur : les recopier ici ferait deux listes qui
+  // divergent, et l'ecran proposerait une fenetre que le tour ne sait pas lire.
+  useEffect(() => {
+    fetch("/capgrowth/api/fenetres").then(r => r.json())
+      .then(d => setFenetres(d.fenetres || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!mandat) return;
@@ -67,11 +83,21 @@ function Nouvelle() {
     const r = await fetch(`/capgrowth/api/campagnes?client=${mandat.ID}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nom, expediteur_id: expediteurId, limite,
+        cadence_min: cadence, fenetre,
         template_ids: Object.values(choix).filter(Boolean),
         ...(source === "segment" ? { segment_id: segmentId } : { liste_id: listeId }) }) });
     const j = await r.json();
     if (!r.ok) { setMsg(j.erreur); return; }
-    setMsg(`Campagne préparée : ${j.prepares} envoi(s) en attente` +
+    /*
+     * Say what was skipped, not only what was prepared.
+     *
+     * The mailer now drops a recipient who already received this exact
+     * template. Left unsaid, the batch simply comes out smaller than the
+     * segment promised, and the sender goes hunting for a bug that isn't one.
+     */
+    const ecartes = j.ignores?.deja_ce_gabarit
+      ? ` — ${j.ignores.deja_ce_gabarit} écarté(s) : ils ont déjà reçu ce gabarit` : "";
+    setMsg(`Campagne préparée : ${j.prepares} envoi(s) en attente` + ecartes +
       (j.contacts_crees ? ` — ${j.contacts_crees} nouveau(x) destinataire(s) ajouté(s) à la base de prospection` : "") + ".");
     setTimeout(() => routeur.push("/campagnes"), 1400);
   }
@@ -143,6 +169,36 @@ function Nouvelle() {
       <label>Limite de cibles
         <input type="number" style={{ width: 120, marginTop: 4, display: "block" }}
           value={limite} onChange={e => setLimite(Number(e.target.value))} /></label>
+
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 10, color: "var(--ink-3)" }}>
+          Rythme d’envoi — le volume du jour reste plafonné par le chauffage du domaine
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select value={cadence ?? ""} style={{ minWidth: 190 }}
+            onChange={e => setCadence(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">Manuel — j’envoie les lots moi-même</option>
+            <option value="5">Un message toutes les 5 minutes</option>
+            <option value="15">Un message toutes les 15 minutes</option>
+            <option value="30">Un message toutes les 30 minutes</option>
+            <option value="60">Un message par heure</option>
+          </select>
+          <select value={fenetre} disabled={cadence === null} style={{ minWidth: 220 }}
+            onChange={e => setFenetre(e.target.value)}>
+            {fenetres.map(f => (
+              <option key={f.id} value={f.id}>
+                {f.libelle}{f.de !== 0 || f.a !== 24 ? ` — ${f.de}h à ${f.a}h` : ""}
+              </option>))}
+          </select>
+          {cadence !== null && fenetres.find(f => f.id === fenetre)?.ouverte === false && (
+            <span className="pill">fenêtre fermée : l’envoi démarrera à sa prochaine ouverture</span>)}
+        </div>
+        <div style={{ fontSize: 10, color: "var(--ink-3)" }}>
+          {cadence === null
+            ? "Rien ne part tant que personne ne clique."
+            : "Heures et jours fériés à l’heure de l’expéditeur (Europe/Paris)."}
+        </div>
+      </div>
       <div>
         <div style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 6 }}>
           Gabarit retenu par langue — le moteur applique celui de la langue du contact

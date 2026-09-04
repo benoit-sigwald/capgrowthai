@@ -87,6 +87,7 @@ function Panneau({ c, surFermer, surChange }: {
               "Préparation…");
             if (j) setMsg(`${j.prepares} envoi(s) ajouté(s)`
               + (j.ignores?.deja_cible ? ` — ${j.ignores.deja_cible} déjà ciblé(s) par cette campagne` : "")
+              + (j.ignores?.deja_ce_gabarit ? ` — ${j.ignores.deja_ce_gabarit} ont déjà reçu ce gabarit` : "")
               + (j.contacts_crees ? `, ${j.contacts_crees} nouveau(x) destinataire(s)` : "") + ".");
           }}>Ajouter</button>
         </div>
