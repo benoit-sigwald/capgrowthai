@@ -17,9 +17,35 @@ import { construireFiltre } from "./personnes";
  * Les desinscrits ne partent jamais : la liste ou le segment peut les
  * contenir, la selection les retire.
  */
-export const PLAFOND_CIBLES = 2000;
+/*
+ * How many rows a selection returns.
+ *
+ * An empty limit means EVERYTHING the segment or the list holds — its own size
+ * is the answer, not a number chosen here. A ceiling of 2 000 used to truncate
+ * on its own: the reachable base carries 5 381 addresses, so a legitimate
+ * selection could be cut without the screen saying so.
+ *
+ * `Number(limite) || 500` was worse still, because zero is falsy in
+ * JavaScript: a field left at 0 silently became 500, and a segment of 1 084
+ * addresses announced « 500 contacts partiraient ». Reported 2026-09-04.
+ *
+ * What actually governs volume is elsewhere and unchanged: the mailer's
+ * warm-up ladder caps what LEAVES per day and per sending domain. Preparing a
+ * campaign only queues it.
+ */
+export function plafonner(limite: number | undefined, total: number): number {
+  const n = Number(limite);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, total) : total;
+}
 
-export interface Cibles { csv: string; nombre: number; horsInvestisseurs: number }
+export interface Cibles {
+  csv: string;
+  /** Retained after the cap — what will actually be prepared. */
+  nombre: number;
+  /** Deliverable addresses the source holds, cap ignored. */
+  total: number;
+  horsInvestisseurs: number;
+}
 
 /*
  * Le corps de la selection, commun au segment et a la liste : seule change la
@@ -56,6 +82,18 @@ const SQL_CONTACT_PAR_EMAIL = `
 async function selectionner(sousRequete: string, binds: Record<string, unknown>,
                             limite?: number): Promise<Cibles> {
   /*
+   * What the source really holds, counted first because it BOUNDS the
+   * selection: with no explicit limit, the segment's own size is the limit.
+   * One row per address, opt-outs excluded — the same shape the selection uses.
+   */
+  const tout = await q(`SELECT COUNT(DISTINCT LOWER(v.EMAIL)) N FROM (${sousRequete}) v
+     WHERE v.EMAIL IS NOT NULL AND NVL(v.OPT_OUT, 0) = 0`, binds);
+  const total = (tout.rows as { N: number }[])[0].N;
+  // FETCH FIRST 0 ROWS is a syntax error in Oracle, and an empty source is a
+  // normal answer, not a failure.
+  if (!total) return { csv: "contact_id;email;full_name;country;languages",
+                       nombre: 0, total: 0, horsInvestisseurs: 0 };
+  /*
    * Le CONTACT_ID vient du contact rapproche, PAS de la cle de la personne :
    * MAILING_SENDS pointe vers DEMARCHAGE, un identifiant invente n'y existerait
    * pas. Et l'on ne garde qu'UNE ligne par adresse — la meme personne figure
@@ -77,7 +115,7 @@ async function selectionner(sousRequete: string, binds: Record<string, unknown>,
         LEFT JOIN (${SQL_CONTACT_PAR_EMAIL}) i ON i.CLE = LOWER(v.EMAIL)
        WHERE v.EMAIL IS NOT NULL AND NVL(v.OPT_OUT, 0) = 0)
      WHERE RANG = 1
-     FETCH FIRST ${Math.min(Number(limite) || 500, PLAFOND_CIBLES)} ROWS ONLY`, binds);
+     FETCH FIRST ${plafonner(limite, total)} ROWS ONLY`, binds);
   /*
    * Ceux que le routeur ne connait pas encore. Ils ne sont plus ecartes — le
    * mailer leur ouvre une ligne de demarchage a la preparation — mais on les
@@ -96,7 +134,7 @@ async function selectionner(sousRequete: string, binds: Record<string, unknown>,
       .map(x => String(x ?? "").replace(/;/g, ",")).join(";")))
     .join("\n");
 
-  return { csv, nombre: lignes.length,
+  return { csv, nombre: lignes.length, total,
            horsInvestisseurs: (nouveaux.rows as { N: number }[])[0].N };
 }
 

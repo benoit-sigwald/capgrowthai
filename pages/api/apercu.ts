@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { porteeDepuis } from "@/lib/auth";
 import { clientAutorise, contactsAutorises } from "@/lib/portee";
-import { ciblesDeLaListe, ciblesDuSegment, PLAFOND_CIBLES } from "@/lib/cibles";
+import { ciblesDeLaListe, ciblesDuSegment } from "@/lib/cibles";
 
 /*
  * Combien de contacts partiraient, si on preparait maintenant.
@@ -24,11 +24,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!segmentId && !listeId)
     return res.status(400).json({ erreur: "segment_id ou liste_id requis" });
 
-  const limite = Math.min(Number(req.query.limite) || PLAFOND_CIBLES, PLAFOND_CIBLES);
+  // The limit is applied inside the selection, which is the only place that
+  // knows the source's size — an empty limit means the whole segment or list.
+  const limite = Number(req.query.limite) || undefined;
   const c = segmentId ? await ciblesDuSegment(segmentId, cid, limite)
                       : await ciblesDeLaListe(listeId, cid, limite);
   if (!c) return res.status(404).json({ erreur: "source inconnue sur ce mandat" });
 
-  res.json({ cibles: c.nombre, nouveaux: c.horsInvestisseurs,
-             plafond_atteint: c.nombre >= limite });
+  // `total` is what the source holds; `cibles` is what survives the cap. The
+  // screen needs both, otherwise a capped figure reads as the segment size.
+  res.json({ cibles: c.nombre, total: c.total, nouveaux: c.horsInvestisseurs,
+             plafond_atteint: c.total > c.nombre });
 }

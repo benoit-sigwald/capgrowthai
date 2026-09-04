@@ -24,7 +24,12 @@ function Nouvelle() {
   const [segmentId, setSegmentId] = useState(0);
   const [listeId, setListeId] = useState(0);
   const [expediteurId, setExpediteurId] = useState(0);
-  const [limite, setLimite] = useState(200);
+  /*
+   * Target limit. Empty means the whole segment or list — its own size is the
+   * answer. It used to be a number whose 0 silently meant 500, which is how a
+   * segment of 1 084 addresses announced "500 contacts partiraient".
+   */
+  const [limite, setLimite] = useState("");
   /*
    * Pacing. Manual by default — null cadence means the batch leaves when
    * someone clicks, which is how every campaign has worked so far. Choosing a
@@ -40,7 +45,8 @@ function Nouvelle() {
   const [msg, setMsg] = useState("");
   const langues = [...new Set(gabarits.map(g => String(g.LANGUAGE)))].sort();
   // Combien partiraient, si on preparait maintenant. Lu avant, pas apres.
-  const [apercu, setApercu] = useState<{ cibles: number; nouveaux: number } | null>(null);
+  const [apercu, setApercu] = useState<
+    { cibles: number; total: number; nouveaux: number; plafond_atteint: boolean } | null>(null);
 
   // Les fenetres viennent du moteur : les recopier ici ferait deux listes qui
   // divergent, et l'ecran proposerait une fenetre que le tour ne sait pas lire.
@@ -73,7 +79,7 @@ function Nouvelle() {
     if (!mandat || !id) { setApercu(null); return; }
     setApercu(null);
     const cle = source === "segment" ? "segment_id" : "liste_id";
-    fetch(`/capgrowth/api/apercu?client=${mandat.ID}&${cle}=${id}&limite=${limite || 500}`)
+    fetch(`/capgrowth/api/apercu?client=${mandat.ID}&${cle}=${id}&limite=${limite || 0}`)
       .then(r => r.json()).then(d => setApercu(d.cibles === undefined ? null : d));
   }, [mandat, source, segmentId, listeId, limite]);
 
@@ -82,7 +88,8 @@ function Nouvelle() {
     setMsg("Préparation…");
     const r = await fetch(`/capgrowth/api/campagnes?client=${mandat.ID}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nom, expediteur_id: expediteurId, limite,
+      body: JSON.stringify({ nom, expediteur_id: expediteurId,
+        limite: Number(limite) || undefined,
         cadence_min: cadence, fenetre,
         template_ids: Object.values(choix).filter(Boolean),
         ...(source === "segment" ? { segment_id: segmentId } : { liste_id: listeId }) }) });
@@ -167,8 +174,10 @@ function Nouvelle() {
           Aucun expéditeur authentifié : SPF et DKIM manquent. Paramètres → Expéditeurs
           affiche les lignes DNS exactes à coller.</span>)}
       <label>Limite de cibles
-        <input type="number" style={{ width: 120, marginTop: 4, display: "block" }}
-          value={limite} onChange={e => setLimite(Number(e.target.value))} /></label>
+        <input type="number" min={1} placeholder="toutes" style={{ width: 120, marginTop: 4, display: "block" }}
+          value={limite} onChange={e => setLimite(e.target.value)} />
+        <span style={{ fontSize: 10, color: "var(--ink-3)" }}>
+          Vide = tout le segment ou la liste.</span></label>
 
       <div style={{ display: "grid", gap: 6 }}>
         <div style={{ fontSize: 10, color: "var(--ink-3)" }}>
@@ -229,6 +238,8 @@ function Nouvelle() {
       {apercu && (
         <span className={apercu.cibles ? "pill" : "pill crit"}>
           {apercu.cibles} contact(s) partiraient
+          {apercu.plafond_atteint &&
+            ` sur ${apercu.total.toLocaleString("fr-FR")} — limite de cibles`}
           {apercu.nouveaux > 0 &&
             ` — dont ${apercu.nouveaux} nouveau(x) destinataire(s), inconnus de la base de prospection jusqu'ici`}
           {apercu.cibles === 0 && " : cette source ne contient aucun contact joignable"}
