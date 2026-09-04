@@ -15,6 +15,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const r = await q(`
       SELECT c.CAMPAIGN_ID, c.NAME, c.CREATED_AT, c.TOTAL_TARGETED,
              c.EXPEDITEUR_EMAIL, c.EXPEDITEUR_NOM,
+             -- The rhythm, so the list can say a campaign is driven rather
+             -- than leaving the setting invisible in a column nobody reads.
+             c.CADENCE_MIN, c.FENETRE,
              COUNT(CASE WHEN s.SENT_AT IS NOT NULL THEN 1 END) ENVOYES,
              COUNT(CASE WHEN s.STATUS = 'pending' THEN 1 END) EN_ATTENTE,
              COUNT(CASE WHEN s.OPENED_AT IS NOT NULL THEN 1 END) OUVERTS,
@@ -25,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         LEFT JOIN INVESTORS.MAILING_SENDS s ON s.CAMPAIGN_ID = c.CAMPAIGN_ID
        WHERE c.CLIENT_ID = :cid
        GROUP BY c.CAMPAIGN_ID, c.NAME, c.CREATED_AT, c.TOTAL_TARGETED,
-                c.EXPEDITEUR_EMAIL, c.EXPEDITEUR_NOM
+                c.EXPEDITEUR_EMAIL, c.EXPEDITEUR_NOM, c.CADENCE_MIN, c.FENETRE
        ORDER BY c.CREATED_AT DESC`, { cid });
     return res.json({ rows: r.rows });
   }
